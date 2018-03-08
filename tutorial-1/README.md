@@ -1,14 +1,14 @@
-##Compiling an NGINX web server
+## Compiling an NGINX web server
 
-###What are we doing?
+### What are we doing?
 
 We're compiling an NGINX web server for a test system.
 
-###Why are we doing this?
+### Why are we doing this?
 
 In professional use of the web server it’s at times the case that special requirements (security, additional debugging messages, special features from a new patch, etc.) force you to leave behind the distribution packages and quickly create some binaries on your own. In this case it’s important for the infrastructure to be prepared and to already have experience compiling and running your own binaries on production systems. It’s also easier to work with self-compiled NGINX in a laboratory-like setup, which is also beneficial in terms of debugging. Finally, compiling the server yourself is a useful exercise that helps you to understand the full stack.
 
-###Step 1: Preparing the directory tree for the source code
+### Step 1: Preparing the directory tree for the source code
 
 It’s not all that important where the source code is located. The following is a recommendation based on the [File Hierarchy Standard](http://www.pathname.com/fhs/). The FHS defines the path structure of a Unix system; the structure for all stored files.
 
@@ -18,7 +18,7 @@ $> sudo chown `whoami` /usr/src/nginx
 $> cd /usr/src/nginx
 ```
 
-###Step 2: Meeting the requirements for NGINX
+### Step 2: Meeting the requirements for NGINX
 
 NGINX distributes pre-built binaries as part of the NGINX Plus offering. Authentication happens via SSL/TLS keys which makes the installation process a bit tedious. We are compiling the source code ourselves, so we do not have to bother. However, self-compilation means we need to make sure all dependencies are met ourselves.
 
@@ -36,7 +36,7 @@ Things typically missing:
 These are the package names on Debian-based distributions. The packages may have different names elsewhere. 
 The absence of these files can be easily rectified by re-installing them using the utilities from your own distribution. 
 
-###Step 3: Downloading the source code and verifying the integrity of the code
+### Step 3: Downloading the source code and verifying the integrity of the code
 
 We’ll now download the program code from [NGINX](https://nginx.org/) in a browser or by using wget on the command line, which is the preferred approach. But we also want to make sure we have an unmanipulated copy of the code. We can do that by checking the signature on the code based on a publicly available key of one of the lead developers. NGINX has Maxim Dounin sign its code. Let's grab his key:
 
@@ -80,7 +80,7 @@ gpg: Good signature from "Maxim Dounin <mdounin@mdounin.ru>"
 
 Perfect. We're finally ready for the configuration of the compiler and the compilation itself.
 
-###Step 4: Unpacking and configuring the compiler
+### Step 4: Unpacking and configuring the compiler
 
 We will start by unpacking the tar archive
 
@@ -130,7 +130,7 @@ Now you may wonder why we enable performance-relevant options and additional log
 
 Once the configure script has finished, please make sure to check the final lines of the output. If they resemble the example output above, then you are on the safe side. If an error is reported, then you will have to solve that problem. Usually it's a missing piece of software that the compilation process and NGINX depends upon.
 
-###Step 5: Compiling
+### Step 5: Compiling
 
 Once _configure_ is completed, we are ready for the compiler. Nothing should go wrong any longer at this point.
 
@@ -140,7 +140,7 @@ $> make
 
 This takes some time and 38 MB becomes just under 100 MB.
 
-###Step 6: Installing
+### Step 6: Installing
 
 When compiling is successful, we then install the NGINX web server we built ourselves. Installation must be performed by the super user. But right afterwards we’ll see how we can again take ownership of the web server. This is much more practical for a test system.
 
@@ -164,7 +164,7 @@ $> cd /nginx
 
 Our web server now has a pathname clearly describing it by version number. We will however simply use `/nginx` for access. This makes work easier.
 
-###Step 7: Starting
+### Step 7: Starting
 
 Now let’s see if our server will start up. For the moment, this again has to be done by the super user:
 
@@ -182,7 +182,7 @@ root     13423  0.0  0.0  32184  3288 ?        Ss   11:19   0:00 nginx: master p
 That's our daemon!
 
 
-###Step 8: Trying it out
+### Step 8: Trying it out
 
 The server is running. But is it also working? Time for the function test: We access NGINX by entering the following URL in our browser:
 
@@ -204,7 +204,7 @@ $> sudo ./sbin/nginx -s stop
 
 Again, no feedback on the command line. But we can check if the PID file is still there. If it is gone, then the server did indeed stop.
 
-###Step 9 (Goodie): Inspecting the binary a bit
+### Step 9 (Goodie): Inspecting the binary a bit
 
 Before completing the tutorial, we’d like to take a closer look at the server. Let’s open the engine compartment and take a peek inside. We can get some basic information about our binary as follows:
 
@@ -240,7 +240,7 @@ We see a couple of system libraries including the threading library, the PCRE (p
 Let's leave it at that for the moment. I hope you enjoyed this tutorial.
 
 
-###References
+### References
 - NGINX: [https://www.nginx.org](https://www.nginx.org)
 - NGINX Compile time options: [https://www.nginx.com/resources/wiki/start/topics/tutorials/installoptions/](https://www.nginx.com/resources/wiki/start/topics/tutorials/installoptions/)
 - File Hierarchy Standard: [http://www.pathname.com/fhs/](http://www.pathname.com/fhs/)
