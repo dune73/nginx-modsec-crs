@@ -1,19 +1,19 @@
-##Embedding ModSecurity 
+## Embedding ModSecurity 
 
-###What are we doing?
+### What are we doing?
 We are compiling the ModSecurity module, embedding it in the Apache web server, creating a base configuration and dealing with _false positives_ for the first time.
 
-###Why are we doing this?
+### Why are we doing this?
 
 ModSecurity is a security module for the web server. The tool enables the inspection of both the request and the response according to predefined rules. This is also called a _Web Application Firewall_. It gives the administrator direct control over the requests and the responses passing through the system. The module also provides new options for monitoring, because the entire traffic between client and server can be written 1:1 to the hard disk. This helps with debugging.
 
 
-###Requirements
+### Requirements
 
 * An NGINX web server, ideally one created using the file structure shown in [Tutorial 1 (Compiling a NGINX web server)](https://www.netnea.com/cms/nginx-tutorial-1_compiling-nginx/).
 * Understanding of the minimal configuration [Tutorial 2 (Configuring a Minimal NGINX Web Server)](https://www.netnea.com/cms/nginx-tutorial-2_minimal-nginx-configuration/).
 
-###Step 1: Downloading the source code and verifying the checksum
+### Step 1: Downloading the source code and verifying the checksum
 
 We previously downloaded the source code for the web server to <i>/usr/src/nginx</i>. We will now be doing the same with ModSecurity. To do so, we create the directory <i>/usr/src/modsecurity/</i> as root, we transfer it to ourselves and then download the code into the folder. 
 
@@ -37,7 +37,7 @@ We expect the following response:
 modsecurity-v3.0.0.tar.gz: OK
 ```
 
-###Step 2: Unpacking and configuring the compiler
+### Step 2: Unpacking and configuring the compiler
 
 We now unpack the source code and initiate the configuration. But before this it is essential to install several packages that constitute the prerequisite for compiling _ModSecurity_. If you did the first tutorial in this series, you should be covered, but it's still worth checking the following list of packages is really ready: A library for parsing XML structures, the base header files of the system’s own Regular Expression Library and everything to work with JSON files. Like in the previous tutorials, we are working on a system from the Debian family. The packages are thus named as follows:
 
@@ -62,7 +62,7 @@ $> ./configure --prefix=/opt/modsecurity-3.0.0 --enable-mutex-on-pm
 
 We created the <i>/apache</i> symlink in the tutorial on compiling Apache. This again comes to our assistance, because independent from the Apache version being used, we can now have the ModSecurity configuration always work with the same parameters and always get access to the current Apache web server. The first two options establish the link to the Apache binary, since we have to make sure that ModSecurity is working with the right API version. The _with-pcre_ option defines that we are using the system’s own _PCRE-Library_, or Regular Expression Library, and not the one provided by Apache. This gives us a certain level of flexibility for updates, because we are becoming independent from Apache in this area, which has proven to work in practice. It requires the first installed _libpcre3-dev_ package.
 
-###Step 3: Compiling and installing standalone ModSecurity
+### Step 3: Compiling and installing standalone ModSecurity
 
 Following this preparation compiling should no longer pose a problem.
 
@@ -77,7 +77,7 @@ $> sudo make install
 $> sudo chown -R `whoami` /opt/modsecurity-3.0.0
 ```
 
-###Step 4: Compiling the connector module
+### Step 4: Compiling the connector module
 
 ModSecurity 3.0 runs standalone. It is integrated via a NGINX module that organises the exchange between the webserver and ModSecurity. This allows ModSecurity remain webserver agnostic while the whole integration happens in the connector module.
 
@@ -111,7 +111,7 @@ $> cp objs/ngx_http_modsecurity_module.so /nginx/modules
 ```
 That's it. Let's see if we can launch the webserver together with ModSecurity.
 
-###Step 5: Creating the base configuration
+### Step 5: Creating the base configuration
 
 We start with the setup up a base ModSecurity configuration. ModSecurity is now a standalone WAF directed by NGINX with the help of a dynamic connector module. So our configuration needs to load said module and then configure ModSecurity. It is best to use our existing configuration and to extend it for ModSecurity:
 
@@ -308,7 +308,7 @@ Perf-ModSecCombined: %{PERF_COMBINED}M" perflog
 
 This long list of numbers can be used to very well narrow down ModSecurity performance problems and rectify them if necessary. When you need to look even deeper, the _debug log_ can help, or make use of the *PERF_RULES* variable collection, which is well explained in the reference manual.
 
-###Step 6: Writing simple blacklist rules
+### Step 6: Writing simple blacklist rules
 
 ModSecurity is set up and configured using the configuration above. It can diligently log performance data, but only the rudimentary basis is present on the security side. In a subsequent tutorial we will be embedding the _OWASP ModSecurity Core Rules_, a comprehensive collection of rules. But it’s important for us to first learn how to write rules ourselves. Some rules have already been explained in the base configuration. It's just another small step from here.
 
@@ -323,7 +323,7 @@ We start off the rule using _SecRule_. Then we say that we want to inspect the p
 
 We call this type of rules _blacklist rules_, because it describes what we want to block. In principle, we let everything pass, except for requests that violate the configured rules. The opposite approach of describing the requests we want and by doing so block all unknown requests is what we call _whitelist rules_. _Blacklist rules_ are easier to write, but often remain incomplete. _Whitelist rules_ are more comprehensive and when written correctly can be used to completely seal off a server. But they are difficult to write and in practice often lead to problems if they are not fully formulated. A _whitelist example_ follows below.
 
-###Step 7: Trying out the blockade
+### Step 7: Trying out the blockade
 
 Let’s try out the blockade:
 
@@ -358,7 +358,7 @@ Here, _ModSecurity_ describes the rule that was applied and the action taken: Fi
 
 We will also find more details about this information in the _audit log_ discussed above. However, for normal use the _error log_ is often enough.
 
-###Step 8: Writing simple whitelist rules
+### Step 8: Writing simple whitelist rules
 
 Using the rules described in Step 7, we were able to prevent access to a specific URL. We will now be using the opposite approach: We want to make sure that only one specific URL can be accessed. In addition, we will we only be accepting previously known _POST parameters_ in a specified format. This is a very tight security technique which is also called positive security: It is no longer us trying to find known attacks in user submitted content, it is now the user who has to proof that his request meets all our criteria.
 
@@ -467,7 +467,7 @@ The case with the password is less obvious. Apparently, we want users to use a l
 
 This concludes our partial whitelisting example.
 
-###Step 9: Trying out the blockade
+### Step 9: Trying out the blockade
 
 But does it really work? Here are some attempts:
 
@@ -528,7 +528,7 @@ more than once"] [tag "Login Whitelist"] [hostname "localhost"] [uri "/login/log
 
 It works from top to bottom and it seems the behaviour is just what we expected.
 
-###Step 10 (Goodie): Writing all client traffic to disk
+### Step 10 (Goodie): Writing all client traffic to disk
 
 Before coming to the end of this tutorial here’s one more tip that often proves useful in practice: _ModSecurity_ is not just a _Web Application Firewall_. It is also a very precise debugging tool. The entire traffic between client and server can be logged. This is done as follows:
 
@@ -573,12 +573,12 @@ The rule that logs traffic can of course be customized, enabling us to precisely
 
 We have reached the end of this tutorial. *ModSecurity* is an important component for the operation of a secure web server. This tutorial has hopefully provided a successful introduction to the topic.
 
-###References
+### References
 
 * Apache [https://httpd.apache.org](http://httpd.apache.org)
 * ModSecurity [https://www.modsecurity.org](http://www.modsecurity.org)
 * ModSecurity Reference Manual [https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual](https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual)
 
-### License / Copying / Further use
+###  License / Copying / Further use
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
