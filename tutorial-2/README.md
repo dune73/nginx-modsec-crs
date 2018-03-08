@@ -28,7 +28,7 @@ events {
     worker_connections  128;
 }
 
-error_log         logs/error.log debug;
+error_log         logs/error.log info;
 
 http {
     server_tokens off;

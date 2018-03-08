@@ -94,7 +94,7 @@ We now enter the directory and configure the compiler with our options:
 
 ```bash
 $> cd nginx-1.13.9
-$> ./configure --prefix=/opt/nginx-1.13.9 --with-http_ssl_module --with-threads --with-file-aio --with-debug
+$> ./configure --prefix=/opt/nginx-1.13.9 --with-http_ssl_module --with-threads --with-file-aio
 ...
 Configuration summary
   + using threads

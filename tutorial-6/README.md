@@ -94,13 +94,17 @@ This seems to be alright, let's unpack this archive and return to the NGINX sour
 ```bash
 $> tar -xvzf modsecurity-nginx-v1.0.0.tar.gz
 $> cd /usr/src/nginx/nginx-1.13.9
-$> ./configure --prefix=/opt/nginx-1.13.9 --with-http_ssl_module --with-threads --with-file-aio --with-debug --with-compat --add-dynamic-module=/usr/src/modsecurity/modsecurity-nginx-v1.0.0
+$> ./configure --prefix=/opt/nginx-1.13.9 --with-http_ssl_module --with-threads --with-file-aio --with-compat --add-dynamic-module=/usr/src/modsecurity/modsecurity-nginx-v1.0.0
 ```
-
-This should be smooth. When it's done, then you can proceed and build the module
+This should be smooth. When it's done, then you can proceed and build the module. However, I also noticed, that the module could not be loaded by the previously compiled NGINX server. So we need to build that one again.
 
 ```bash
+$> make
+...
+$> sudo make install
+...
 $> make modules
+...
 ```
 
 We want to copy this module to the nginx destination. Let's create a folder to allow for this:
@@ -109,86 +113,135 @@ We want to copy this module to the nginx destination. Let's create a folder to a
 $> [ ! -d /nginx/modules ] && mkdir /nginx/modules
 $> cp objs/ngx_http_modsecurity_module.so /nginx/modules
 ```
-That's it. Let's see if we can launch the webserver together with ModSecurity.
+
+That's it. We are now ready to enable ModSecurity.
 
 ### Step 5: Creating the base configuration
 
-We start with the setup up a base ModSecurity configuration. ModSecurity is now a standalone WAF directed by NGINX with the help of a dynamic connector module. So our configuration needs to load said module and then configure ModSecurity. It is best to use our existing configuration and to extend it for ModSecurity:
+We start with the setup up a base ModSecurity configuration. ModSecurity is now a standalone WAF directed by NGINX with the help of a dynamic connector module. So our configuration needs to load said module and then configure ModSecurity. It is best to use our existing configuration and to extend it for ModSecurity.
+
+First we need to add the `load_module` statement in the top level of the configuration. After `user` for example.
 
 ```bash
 
-daemon            off;
-worker_processes  2;
-user              www-data;
-
 load_module modules/ngx_http_modsecurity_module.so;
 
-events {
-    use           epoll;
-    worker_connections  128;
-}
-
-error_log         logs/error.log debug;
-
-
-http {
-    server_tokens off;
-    
-    include       mime.types;
-    charset       utf-8;
-
-    access_log    logs/access.log  combined;
-
-    modsecurity on;
-
-    modsecurity_rules '
-    
-                SecRuleEngine On
-                SecRequestBodyAccess On
-                SecRequestBodyLimit 13107200
-
-                SecRequestBodyNoFilesLimit 64000
-
-                SecResponseBodyAccess On
-                SecResponseBodyLimit 10000000
-
-                SecTmpDir /tmp/
-                SecDataDir /tmp/
-                SecUploadDir /tmp/
-
-                SecAuditEngine RelevantOnly
-                SecAuditLogRelevantStatus "^(?:5|4(?!04))"
-                SecAuditLogParts ABEFHIJZ
-
-                SecAuditLogType Serial
-                SecAuditLog logs/modsec_audit.log
-
-                SecPcreMatchLimit 500000
-                SecPcreMatchLimitRecursion 500000
-
-                SecDebugLog logs/modsec_debug.log
-                SecDebugLogLevel 0
-
-    ';
-
-    server {
-        server_name   localhost;
-        listen        127.0.0.1:40080;
-
-        error_page    500 502 503 504  /50x.html;
-
-        location      / {
-            root      html;
-        }
-
-    }
-
-}
 ```
 
-FIXME
+Then we need to enable ModSecurity and do the baseline configuration. I suggest to do this within the `http` block.
 
-The ModSecurity base configuration begins on the next line: We define the base settings of the module in this part. Then in a separate part come individual security rules, most of which are a bit complicated. Let’s go through this configuration step-by-step: _SecRuleEngine_ is what enables ModSecurity in the first place. We then enable access to the request body and set two limits: By default only the header lines of the request are examined. This is like looking only at the envelope of a letter. Inspecting the body and thus the content of the request of course involves more work and takes more time, but a large number of attacks are not detectable from outside, which is why we are enabling this. We then limit the size of the request body to 10 MB. This includes file uploads. For requests with body, but without file upload, such as an online form, we then specify 64 KB as the limit. In detail, *SecRequestBodyNoFilesLimit* is responsible for *Content-Type application/x-www-form-urlencoded*, while *SecRequestBodyLimit* takes care of *Content-Type: multipart/form-data*.
+```bash
+modsecurity on;
+```
+
+ModSecurity 3.0 knows two ways to write rule blocks. You can write them inline with the `modsecurity_rules` directive. This could
+follow `modsecurity on` and would look as follows.
+
+```bash
+modsecurity_rules '
+    SecRuleEngine On
+    SecRequestBodyAccess On
+    
+    ...
+
+';
+```
+
+Generally, I prefer to write rules inline. But I ran into parser problems with ModSecurity that way. So as of this writing
+the `modsecurity_rules_file` is working much better with ModSecurity 3.0.
+
+So let's add the following:
+
+```bash
+modsecurity_rules_file conf/modsecurity.conf;
+```
+
+Then we can put all things ModSecurity into this file:
+
+```bash
+SecRuleEngine On
+SecRequestBodyAccess On
+SecRequestBodyLimit 13107200
+
+SecRequestBodyNoFilesLimit 64000
+
+SecResponseBodyAccess On
+SecResponseBodyLimit 10000000
+
+SecTmpDir /tmp/
+SecDataDir /tmp/
+SecUploadDir /tmp/
+
+SecAuditEngine RelevantOnly
+SecAuditLogRelevantStatus "^(?:5|4(?!04))"
+SecAuditLogParts ABEFHIJZ
+
+SecAuditLogType Serial
+SecAuditLog logs/modsec_audit.log
+SecAuditLogStorageDir logs/audit
+
+SecPcreMatchLimit 500000
+SecPcreMatchLimitRecursion 500000
+
+SecDebugLog logs/modsec_debug.log
+SecDebugLogLevel 0
+
+SecDefaultAction "phase:1,pass,log,tag:'Local Lab Service'"
+SecDefaultAction "phase:2,pass,log,tag:'Local Lab Service'"
+
+
+
+# == ModSec Rule ID Namespace Definition
+# Service-specific before Core-Rules:    10000 -  49999
+# Service-specific after Core-Rules:     50000 -  79999
+# Locally shared rules:                  80000 -  99999
+# Recommended ModSec Rules (few):       200000 - 200010
+# OWASP Core-Rules:                     900000 - 999999
+
+
+# === ModSec Recommended Rules (in modsec src package) (ids: 200000-200010)
+
+SecRule REQUEST_HEADERS:Content-Type "(?:application(?:/soap\+|/)|text/)xml" \
+  "id:200000,phase:1,t:none,t:lowercase,pass,nolog,ctl:requestBodyProcessor=XML"
+
+SecRule REQUEST_HEADERS:Content-Type "application/json" \
+  "id:200001,phase:1,t:none,t:lowercase,pass,nolog,ctl:requestBodyProcessor=JSON"
+
+SecRule REQBODY_ERROR "!@eq 0" \
+  "id:200002,phase:2,t:none,deny,status:400,log,\
+  msg:'Failed to parse request body.',logdata:'%{reqbody_error_msg}',severity:2"
+
+SecRule MULTIPART_STRICT_ERROR "!@eq 0" \
+  "id:200003,phase:2,t:none,deny,status:403,log, \
+  msg:'Multipart request body failed strict validation: \
+  PE %{REQBODY_PROCESSOR_ERROR}, \
+  BQ %{MULTIPART_BOUNDARY_QUOTED}, \
+  BW %{MULTIPART_BOUNDARY_WHITESPACE}, \
+  DB %{MULTIPART_DATA_BEFORE}, \
+  DA %{MULTIPART_DATA_AFTER}, \
+  HF %{MULTIPART_HEADER_FOLDING}, \
+  LF %{MULTIPART_LF_LINE}, \
+  SM %{MULTIPART_MISSING_SEMICOLON}, \
+  IQ %{MULTIPART_INVALID_QUOTING}, \
+  IP %{MULTIPART_INVALID_PART}, \
+  IH %{MULTIPART_INVALID_HEADER_FOLDING}, \
+  FL %{MULTIPART_FILE_LIMIT_EXCEEDED}'"
+
+SecRule TX:/^MSC_/ "!@streq 0" \
+  "id:200005,phase:2,t:none,deny,status:500,\
+  msg:'ModSecurity internal error flagged: %{MATCHED_VAR_NAME}'"
+
+
+# === ModSecurity Rules 
+#
+# ...
+                
+
+```
+
+Another anomaly, we need to cope with is the fact that the ModSecurity 3.0 parser does not like more than a single space between the directives and the parameters. This makes it a bit untidy, but it works.
+
+Let’s go through this configuration step-by-step: _SecRuleEngine_ is what enables ModSecurity in the first place. We then enable access to the request body and set two limits: By default only the header lines of the request are examined. This is like looking only at the envelope of a letter. Inspecting the body and thus the content of the request of course involves more work and takes more time, but a large number of attacks are not detectable from outside, which is why we are enabling this. We then limit the size of the request body to 10 MB. This includes file uploads. For requests with body, but without file upload, such as an online form, we then specify 64 KB as the limit. In detail, *SecRequestBodyNoFilesLimit* is responsible for *Content-Type application/x-www-form-urlencoded*, while *SecRequestBodyLimit* takes care of *Content-Type: multipart/form-data*.
 
 On the response side we enable body access and in turn define a limit of 10 MB. No differentiation is made here in the transfer of forms or files; all of them are files.
 
@@ -240,11 +293,7 @@ The OWASP ModSecurity Core Rule Set project provides a basic set of over 200 Mod
 
 If ModSecurity is being used for multiple services, eventually some shared rules will be used. These are self-written rules configured for each of their own instances. We put these in the 80,000 to 99,999 range. For the other service-specific rules it often plays a role as to whether they are defined before or after the core rules. For logical reasons, we therefore divide the remaining space into two sections: 10,000 to 49,999 for service-specific rules before the core rules and 50,000 to 79,999 after the core rules. Although we won’t yet be embedding the core rules in this tutorial, we will be preparing for them. It bears mentioning that the rule ID has nothing to do with the order of the execution of the rules.
 
-This brings us to the first rules. We start off with a block of performance data. There are not yet any security-related rules, but the definition of information for the path of the request within ModSecurity. We use the _SecAction_ directive. A _SecAction_ is always performed without condition. A comma separated list with instructions follows as parameters. We initially define the rule ID, then the phase in which the rule is to run (1 to 5). We do no wish to have an entry in the server’s error log (_nolog_). Furthermore, we let the request _pass_ and set multiple internal variables: We define a timestamp for each ModSecurity phase. As it were, an intermediate time within the request when starting each individual phase. This is done by using the clock running in the form of the _Duration_ variables which begin ticking in microseconds at the start of the request.
-
-The rule with ID 90005 is commented out. We can enable it in order to set the Apache *write_perflog* environment variable. Once we do that the performance log defined in the Apache section will be written. This rule is no longer defined as _SecAction_, but as _SecRule_. A preceding condition is added to the rule instruction here. In our case we inspect *REQUEST_FILENAME* with respect to the beginning of the string. If the string begins with _/_, then the subsequent instructions including setting the environment variables should be performed. Of course, every valid request URI begins with the _/_ character. But if we only want to enable the log for specific paths (e.g. _/login_), we are then prepared for this and only need to modify the path.
-
-So much for this performance part. Now come the rules proposed by the *ModSecurity* project in the sample configuration file. They have rule IDs starting at 200,000 and are not very numerous. The first rule inspects the _request headers Content-Type_. The rule applies when these headers match the text _text/xml_. It is evaluated in phase 1. After the phase comes the _t:none_ instruction. This means _transformation: none_. We do not want to transform the parameters of the request prior to processing this rule. Following _t:none_ a transformation with the self-explanatory name _t:lowercase_ is applied to the text. Using _t:none_ we delete all predefined default transformations if need be and then execute _t:lowercase_. This means that we will be touching _text/xml_, _Text/Xml_, _TEXT/XML_ and all other combinations in the _Content-Type_ header. If this rule applies, then we perform a _control action_ at the very end of the line: We choose _XML_ as the processor of the _request body_. There is one detail still to be explained: The preceding commented out rule introduced the operator _@beginsWith_. By contrast, no operator is designated here. _Default-Operator @rx_ is applied. This is an operator for regular expressions (_regex_). As expected, _beginsWith_ is a very fast operator while working with regular expressions is cumbersome and slow.
+We start with the rules proposed by the *ModSecurity* project in the sample configuration file. They have rule IDs starting at 200,000 and are not very numerous. The first rule inspects the _request headers Content-Type_. The rule applies when these headers match the text _text/xml_. It is evaluated in phase 1. After the phase comes the _t:none_ instruction. This means _transformation: none_. We do not want to transform the parameters of the request prior to processing this rule. Following _t:none_ a transformation with the self-explanatory name _t:lowercase_ is applied to the text. Using _t:none_ we delete all predefined default transformations if need be and then execute _t:lowercase_. This means that we will be touching _text/xml_, _Text/Xml_, _TEXT/XML_ and all other combinations in the _Content-Type_ header. If this rule applies, then we perform a _control action_ at the very end of the line: We choose _XML_ as the processor of the _request body_. There is one detail still to be explained: The preceding commented out rule introduced the operator _@beginsWith_. By contrast, no operator is designated here. _Default-Operator @rx_ is applied. This is an operator for regular expressions (_regex_). As expected, _beginsWith_ is a very fast operator while working with regular expressions is cumbersome and slow.
 
 The next rule is an almost exact copy of this rule. It uses the same mechanism to apply the JSON request body processor to the request body. This allows us access to the individual parameters inside the post payload.
 
@@ -258,59 +307,9 @@ With 200005 comes another rule which intercepts internal processing errors. Unli
 
 We have now looked at a few rules and have become familiar with the principle functioning of the ModSecurity _WAF_. The rule language is demanding, but very systematic. The structure is unavoidably oriented to the structure of Apache directives. Because before ModSecurity is able to process the directives, they are read by Apache's configuration parser. This is also accompanied by complexity in the way they are expressed. *ModSecurity* is currently being developed in a direction making the module independent from Apache. We will hopefully be benefitting from a configuration that is easier to read.
 
-Now comes a comment in the configuration file which marks the spot for additional rules to be entered. Following this block, which in some circumstances can become very large, come yet more rules that provide performance data for the performance log defined above. The block containing rule IDs 90010 to 90014 stores the time of the end of the individual ModSecurity phases. This corresponds to the 90000 - 90004 block of IDs we became familiar with above. Calculations with the performance data collected are then performed in the last ModSecurity block. For us this means that we totaling up the time that phase 1 and phase 2 need in the *perf_modsecinbound* variable. In the rule with ID 90100 this variable is first set to the performance of phase 1. Then, the performance of phase 2 is added to it. We have to calculate the variable *perf_application* from the timestamps. To do this, we subtract the end of phase 2 from the start of phase 3 in the subsequent `setvar` actions of the same rule. This is of course not an exact calculation of the time that the application itself needs on the server, because other Apache modules play a role (such as authentication), but the value is an indication that sheds light on whether ModSecurity is actually limiting performance or whether the problem more likely lies with the application. The final variable calculations in the rule work on phases 3 and 4, similar to phases 1 and 2. This gives us three relevant values which simply summarize performance: *perf_modsecinbound*, *perf_application* and *perf_modsecoutbound*. They appear in a separate performance log. We have, however, provided enough space for these three values in the normal access log. There we have _ModSecTimeIn_, _ApplicationTime_ and _ModSecTimeOut_. The following `setenv` actions, still in the same rule, are used to export our _perf_ values to the corresponding environment variables in order for them to appear in the _access log_. And finally, we export the _OWASP ModSecurity Core Rule Set_ anomaly values. These values are not yet written, but because we will be making these rules available in the next tutorial, we can already prepare for variable export here.
-
-We are now at the point that we can understand the performance log. The definition above is accompanied by the following parts:
-
-```bash
-LogFormat "[%{%Y-%m-%d %H:%M:%S}t.%{usec_frac}t] %{UNIQUE_ID}e %D \
-PerfModSecInbound: %{TX.perf_modsecinbound}M \
-PerfAppl: %{TX.perf_application}M \
-PerfModSecOutbound: %{TX.perf_modsecoutbound}M \
-TS-Phase1: %{TX.ModSecTimestamp1start}M-%{TX.ModSecTimestamp1end}M \
-TS-Phase2: %{TX.ModSecTimestamp2start}M-%{TX.ModSecTimestamp2end}M \
-TS-Phase3: %{TX.ModSecTimestamp3start}M-%{TX.ModSecTimestamp3end}M \
-TS-Phase4: %{TX.ModSecTimestamp4start}M-%{TX.ModSecTimestamp4end}M \
-TS-Phase5: %{TX.ModSecTimestamp5start}M-%{TX.ModSecTimestamp5end}M \
-Perf-Phase1: %{PERF_PHASE1}M \
-Perf-Phase2: %{PERF_PHASE2}M \
-Perf-Phase3: %{PERF_PHASE3}M \
-Perf-Phase4: %{PERF_PHASE4}M \
-Perf-Phase5: %{PERF_PHASE5}M \
-Perf-ReadingStorage: %{PERF_SREAD}M \
-Perf-ReadingStorage: %{PERF_SWRITE}M \
-Perf-GarbageCollection: %{PERF_GC}M \
-Perf-ModSecLogging: %{PERF_LOGGING}M \
-Perf-ModSecCombined: %{PERF_COMBINED}M" perflog
-```
-
-   * %{%Y-%m-%d %H:%M:%S}t.%{usec_frac}t means, as in our normal log, the timestamp the request was received with a precision of microseconds.
-   * %{UNIQUE_ID}e : The unique ID of the request
-   * %D : The total duration of the request from receiving the request line to the end of the complete request in microseconds.
-   * PerfModSecInbound: %{TX.perf_modsecinbound}M : Summary of the time needed by ModSecurity for an inbound request.
-   * PerfAppl: %{TX.perf_application}M : Summary of the time used by the application
-   * PerfModSecOutbound: %{TX.perf_modsecoutbound}M :  Summary of the time needed in ModSecurity to process the response
-   * TS-Phase1: %{TX.ModSecTimestamp1start}M-%{TX.ModSecTimestamp1end}M : The timestamps for the start and end of phase 1 (after receiving the request headers)
-   * TS-Phase2: %{TX.ModSecTimestamp2start}M-%{TX.ModSecTimestamp2end}M : The timestamps for the start and end of phase 2 (after receiving the request body)
-   * TS-Phase3: %{TX.ModSecTimestamp3start}M-%{TX.ModSecTimestamp3end}M : The timestamps for the start and end of phase 3 (after receiving the response headers) 
-   * TS-Phase4: %{TX.ModSecTimestamp4start}M-%{TX.ModSecTimestamp4end}M : The timestamps for the start and end of phase 4 (after receiving the response body)
-   * TS-Phase5: %{TX.ModSecTimestamp5start}M-%{TX.ModSecTimestamp5end}M : The timestamps for the start and end of phase 5 (logging phase) 
-   * Perf-Phase1: %{PERF_PHASE1}M : Calculation of the performance of the rules in phase 1 performed by ModSecurity
-   * Perf-Phase2: %{PERF_PHASE2}M : Calculation of the performance of the rules in phase 2 performed by ModSecurity
-   * Perf-Phase3: %{PERF_PHASE3}M : Calculation of the performance of the rules in phase 3 performed by ModSecurity
-   * Perf-Phase4: %{PERF_PHASE4}M : Calculation of the performance of the rules in phase 4 performed by ModSecurity
-   * Perf-Phase5: %{PERF_PHASE5}M : Calculation of the performance of the rules in phase 5 performed by ModSecurity
-   * Perf-ReadingStorage: %{PERF_SREAD}M : The time required to read the ModSecurity session storage
-   * Perf-WritingStorage: %{PERF_SWRITE}M : The time required to write the ModSecurity session storage
-   * Perf-GarbageCollection: s%{PERF_GC}M \ The time required for garbage collection
-   * Perf-ModSecLogging: %{PERF_LOGGING}M : The time used by ModSecurity for logging, specifically the error log and the audit log
-   * Perf-ModSecCombined: %{PERF_COMBINED}M : The time ModSecurity requires in total for all work
-
-This long list of numbers can be used to very well narrow down ModSecurity performance problems and rectify them if necessary. When you need to look even deeper, the _debug log_ can help, or make use of the *PERF_RULES* variable collection, which is well explained in the reference manual.
-
 ### Step 6: Writing simple blacklist rules
 
-ModSecurity is set up and configured using the configuration above. It can diligently log performance data, but only the rudimentary basis is present on the security side. In a subsequent tutorial we will be embedding the _OWASP ModSecurity Core Rules_, a comprehensive collection of rules. But it’s important for us to first learn how to write rules ourselves. Some rules have already been explained in the base configuration. It's just another small step from here.
+ModSecurity is set up and configured using the configuration above. But only the rudimentary basis is present on the security side. In a subsequent tutorial we will be embedding the _OWASP ModSecurity Core Rules_, a comprehensive collection of rules. But it’s important for us to first learn how to write rules ourselves. Some rules have already been explained in the base configuration. It's just another small step from here.
 
 Let’s take a simple case: We want to be sure that access to a specific URI on the server is blocked. We want to respond to such a request with _HTTP status 403_. We write the rule for this in the _ModSecurity rule_ section in the configuration and assign it ID 10000 (_service-specific before core-rules_).
 
