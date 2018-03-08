@@ -39,7 +39,7 @@ http {
 
     server {
         server_name   localhost;
-        listen        80;
+        listen        127.0.0.1:80;
 
         error_page    500 502 503 504  /50x.html;
 
@@ -67,7 +67,7 @@ Then we launch a big block with the `http` directive. This tells the server that
 
 The inclusion of the `mime.types` in the configuration folder helps the server map filename extensions to mime types in the response. Setting The correct mime on the other hand helps a browser display a response correctly. On the next line, we tell the server that we generally work with UTF-8. So in addition to the mime type, the HTTP response header will also indicate this charset to the client.
 
-We proceed to the server context that specifies how the HTTP requests are being handled. We call our server `localhost` for the time being and we instruct it to listen on the TCP port 80. Then we instruct the server to be ready to serve a custom error page for all the HTTP error status codes. That is 500 and above. 500, 502, 503 und 504 should all be handled by an error page 50x.html that came with our NGINX installation.
+We proceed to the server context that specifies how the HTTP requests are being handled. We call our server `localhost` for the time being and we instruct it to listen on the localhost interface, TCP port 80. Then we instruct the server to be ready to serve a custom error page for all the HTTP error status codes. That is 500 and above. 500, 502, 503 und 504 should all be handled by an error page 50x.html that came with our NGINX installation.
 
 The `location` block that follows maps the document root folder `/` to the relative folder `html`. In our setup this resolves to `/nginx/html` on the file system.
 
@@ -82,7 +82,7 @@ Let’s now start the server in the foreground and not as a daemon:
 ```bash
 
 $> cd /nginx
-$> sudo sbin/nginx
+$> sudo bin/nginx
 ```
 
 ### Step 4: Talking to the server using curl
