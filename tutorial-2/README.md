@@ -1,19 +1,19 @@
-##Configuring a minimal NGINX server
+## Configuring a minimal NGINX server
 
-###What are we doing?
+### What are we doing?
 
 We are configuring a minimal NGINX web server and will occasionally be talking to it with curl and siege.
 
-###Why are we doing this?
+### Why are we doing this?
 
 A secure server is one that permits only as much as what is really needed. Ideally, you would build a server based on a minimal system by enabling additional features individually. This is also preferable in terms of understanding what’s going on, because this is the only way of knowing what is really configured.
 Starting with a minimal system is also helpful in debugging. If the error is not present in the minimal system, features are added individually and the search for the error goes on. When the error occurs, it is identified to be related to the last configuration directive added.
 
-###Requirements
+### Requirements
 
 * An NGINX web server, ideally one created using the file structure shown in [Tutorial 1 (Compiling a NGINX web server)](https://www.netnea.com/cms/nginx-tutorial-1_compiling-nginx).
 
-###Step 1: Creating a minimal configuration
+### Step 1: Creating a minimal configuration
 
 Our web server is stored in `/nginx` on the file system. It’s default configuration is located in `/nginx/conf/httpd.conf`. That configuration is okay, even if it is a bit untidy. We can do better and replace it with a very brief configuration that is right to the point. NGINX plays into our arms by coming with sane default values. 
 This allows us to be very terse.
@@ -53,7 +53,7 @@ http {
 
 ```
 
-###Step 2: Understanding the configuration
+### Step 2: Understanding the configuration
 
 Let’s go through this configuration step-by-step.
 
@@ -73,7 +73,7 @@ The `location` block that follows maps the document root folder `/` to the relat
 
 And with this, we're already done with this basic configuration.
 
-###Step 3: Starting the server
+### Step 3: Starting the server
 
 Our minimal server has thus been described. It would be possible to define a server that is even more bare bones. It would however not be as comfortable to work with as ours and it would not be any more secure. A certain amount of basic security is however advisable. This is because in the lab we are building a service which should then with specific adjustments be able to be put into a production environment. Wanting to secure a service from top to bottom right before entering a production environment is illusory.
 
@@ -85,7 +85,7 @@ $> cd /nginx
 $> sudo sbin/nginx
 ```
 
-###Step 4: Talking to the server using curl
+### Step 4: Talking to the server using curl
 
 Now we can again communicate with the server from a web browser. But working in the shell at first can be more effective, making it easier to understand what is going on.
 
@@ -125,7 +125,7 @@ Commercial support is available at
 
 We have thus sent an HTTP request and have received a response from our minimally configured server, meeting our expectations.
 
-###Step 5: Examining requests and responses
+### Step 5: Examining requests and responses
 
 This is what happens during an HTTP request. But what exactly is the server saying to us? To find out, let’s start _curl_. This time with the _verbose_ option.
 
@@ -192,7 +192,7 @@ The server will then tell us when the file the response is based on was last cha
 
 Incidentally, the order of these headers is characteristic for web servers. _Apache_ uses a different order and, for instance, puts the date before the _server header_ and that is hard-wired into the binary without a config option to change it. So even if we would change the identification to mislead a potential attacker, we would still be able to identify NGINX. So it's not worth bothering.
 
-###Step 6: Examining the response a bit more closely
+### Step 6: Examining the response a bit more closely
 
 During communication it is possible to get a somewhat more detailed view in _curl_. We use the _--trace-ascii_ command line parameter to do this:
 
@@ -246,7 +246,7 @@ _--trace-ascii_ requires a file as a parameter in order to make an _ASCII dump_ 
 Compared to _verbose_, _trace-ascii_ provides more details about the length of transferred bytes in the _request_ and _response_ phase. The request headers in the example above are thus 83 bytes. The bytes are then listed for each header in the response and overall for the body in the response: 612 bytes. This may seem like we are splitting hairs. But in fact, it can be crucial when something is missing and it is not quite certain what or where in the sequence it was delivered. Thus, it’s worth noting that 2 bytes are added to each header line. These are the CR (carriage returns) and NL (new lines) in the header lines included in the HTTP protocol. This is different in the response body, which returns only what is actually in the file. This is obviously only one NL without CR here. On the last line qupted (_0240: ing nginx._) a point comes after the greater than character. This is code for the NL character in the response, which like other escape sequences is output in the form of a point.
 
 
-###Step 7: Using "siege" to test the server
+### Step 7: Using "siege" to test the server
 
 So much for the simple server. But just for fun we can put it to the test. We’ll perform a small performance test using _siege_. This is a fairly simple benchmarking program able to quickly give you initial performance results. I like to run a little performance test before and after a configuration change to get an idea about whether anything in terms of performance has changed. _siege_ is very powerful and calling it locally does not give you clean results. But you can get an initial impression using this tool.
 
@@ -287,7 +287,7 @@ What’s of primary interest to us is the number of errors (_Failed requests_) a
 That's it for this lesson. I hope you learnt something even if much of it was repetition.
 
 
-###References
+### References
 
 * NGINX: [https://nginx.org](http://nginx.org)
 * NGINX directives: [https://nginx.org/en/docs/dirindex.html](https://nginx.org/en/docs/dirindex.html)
@@ -295,7 +295,7 @@ That's it for this lesson. I hope you learnt something even if much of it was re
 * RFC 2616 (HTTP protocol): (http://www.ietf.org/rfc/rfc2616.txt](http://www.ietf.org/rfc/rfc2616.txt)
 
 
-### License / Copying / Further use
+###  License / Copying / Further use
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
 
