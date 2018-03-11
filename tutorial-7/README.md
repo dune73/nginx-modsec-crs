@@ -1,14 +1,14 @@
-##Including the OWASP ModSecurity Core Rule Set
+## Including the OWASP ModSecurity Core Rule Set
 
-###What are we doing?
+### What are we doing?
 
 We are embedding the OWASP ModSecurity Core Rule Set in our NGINX web server and eliminating false alarms.
 
-###Why are we doing this?
+### Why are we doing this?
 
 The ModSecurity Web Application Firewall, as we set up in Tutorial 6, still has barely any rules. The protection only works when you configure an additional rule set. The Core Rule Set provides generic blacklisting. This means that they inspect requests and responses for signs of attacks. The signs are often keywords or typical patterns that may be suggestive of a wide variety of attacks. This also entails false alarms (*false positives*) being triggered and we have to eliminate these for a successful installation.
 
-###Requirements
+### Requirements
 
 * An NGINX web server, ideally one created using the file structure shown in [Tutorial 1 (Compiling a NGINX web server)](https://www.netnea.com/cms/nginx-tutorial-1_compiling-nginx/).
 * Understanding of the minimal configuration [Tutorial 2 (Configuring a Minimal NGINX Web Server)](https://www.netnea.com/cms/nginx-tutorial-2_minimal-nginx-configuration/).
@@ -16,7 +16,7 @@ The ModSecurity Web Application Firewall, as we set up in Tutorial 6, still has 
 
 We will be working with the new major release of the Core Rule Set, CRS3; short for Core Rule Set 3.0. The official distribution comes with an _INSTALL_ file that does a good job explaining the setup (after all, yours truly wrote a good deal of that file), but we will tweak the process a bit to suit our needs.
 
-###Step 1: Downloading OWASP ModSecurity Core Rule Set
+### Step 1: Downloading OWASP ModSecurity Core Rule Set
 
 The ModSecurity Core Rule Set are being developed under the umbrella of *OWASP*, the Open Web Application Security Project. The rules themselves are available on *GitHub* and can be downloaded via *git* or with the following *wget* command:
 
@@ -70,7 +70,7 @@ There is one thing to note about this file. It came with the default name `crs-s
 We just make sure it is available under the new filename `crs-setup.conf`. Then we can continue to update the configuration to include the rules files.
 
 
-###Step 2: Embedding the Core Rule Set
+### Step 2: Embedding the Core Rule Set
 
 In Tutorial 6, in which we embedded ModSecurity itself, we created a configuration file modsecurity.conf. We now add several *Include* directives into this section in order to load the CRS. Specifically, four parts are added to the existing configuration. (1) The Core Rules base configuration, (2) a part for self-defined rule exclusions before the Core Rules. Then (3) the Core Rules themselves with all the includes and finally a part (4) for rule exclusions after the Core Rules.
 
@@ -142,7 +142,7 @@ The Core Rule Set comes in blocking mode by default. If a rule is violated and t
 
 The second rule, id `900000`, defines the _Paranoia Level_ to 1. The Core Rules are divided in four groups at paranoia levels 1 - 4. As the name suggests, the higher the paranoia level, the more paranoid the rules. The default is paranoia level 1, where the rules are quite sane and false alarms are rare. When you raise the PL to 2, additional rules are enabled. Starting with PL 2, you will face more and more false alarms, also called false positives. This number grows with PL3 and when you arrive at PL4, you are likely to face false alarms as though your web application firewall has become quite paranoid, so to speak. We will deal with false positives later in this tutorial, but for the moment you just need to be aware that you can control the aggressiveness of the rule set with the paranoia level setting and that PL3 and PL4 are really for advanced users with very high security needs.
 
-###Step 3: A closer look at the rules folder
+### Step 3: A closer look at the rules folder
 
 The center of the previous config snippet follows the include statement, which loads all files with suffix `.conf` from the rules sub folder in the CRS directory. This is where all the rules are being loaded. Let's take a look at them:
 
@@ -189,7 +189,7 @@ Before and after the rules *Include* directive in our NGINX configuration file, 
 
 
 
-###Step 4: Tweaking the Rule Set and Final Configuration
+### Step 4: Tweaking the Rule Set and Final Configuration
 
 Having looked at the rules, let's tweak the setup a bit. The file `RESPONSE-980-CORRELATION.conf` performs some statistical reporting when a request hits at least one of the rules. But we want to put these requests into a wider perspective, so we also want to learn about requests not triggering any rules. This is useful, because it gives us statistical context and thus an overview over the traffic and the quality of our WAF configuration. So we introduce a rule with the ID 980145 ourselves, in order to report the anomaly scores of all the requests. 
 
@@ -348,7 +348,7 @@ SecRuleRemoveById 980130
 
 We have embedded the Core Rule Set and are now ready for a test operation. The rules inspect requests and responses. They will trigger alarms if they encounter fishy requests, but they will not block any transaction, because the limits have been set very high. Let's give it a shot.
 
-###Step 4: Triggering alarms for testing purposes
+### Step 4: Triggering alarms for testing purposes
 
 For starters, we will do something easy. It is a request that will trigger exactly one rule by attempting to execute a bash shell. We know that our simple lab server is not vulnerable to such a blatant attack, but ModSecurity does not know this and will still try to protect us:
 
@@ -410,7 +410,7 @@ $> nikto -h localhost
 
 This scan should have triggered numerous *ModSecurity alarms* on the server. Let’s take a close look at the *NGINX error log*. In my case, there were over 30,000 entries in the error log. Combine this with the authorization messages and infos on many 404s (Nikto probes for files that do not exist on the server) and you end up with a fast-growing error log. The single Nikto run resulted in a 25 MB8.8 MB logfile. Looking over the audit log tree reveals 78 MB of logs. It's obvious: you need to keep a close eye on these log files or your server will collapse due to denial of service via log file exhaustion.
 
-###Step 5: Analyzing the alert messages
+### Step 5: Analyzing the alert messages
 
 So we are looking at 7,300 alerts. And even if the format of the entries in the error log may be clear, without a tool they are very hard to read, let alone analyze. A simple remedy is to use a few *shell aliases*, which extract individual pieces of information from the entries. They are stored in the alias file we discussed in the log format in Tutorial 5.
 
@@ -578,7 +578,7 @@ $> cat logs/error.log | melidmsg | sucs
 So that's something we can work with. It shows that the Core Rules detected a lot of malicious requests and we now have an idea which rules played a role in this. The non-statistical rules that triggered most frequently, 913100 and 913120, are no surprise, and when you look upwards in the output, this all makes a lot of sense.
 
 
-###Step 6: Evaluating false alarms
+### Step 6: Evaluating false alarms
 
 So the *Nikto* scan set off thousands of alarms. They were likely justified. In the normal use of *ModSecurity*, things are a bit different. The Core Rule Set is designed and optimized to have as few false alarms as possible in paranoia level 1. But in production use, there are going to be false positives sooner or later. Depending on the application, a normal installation will also see alarms and a lot of them will be false. And when you raise the paranoia level to become more vigilant towards attacks, the number of false positives will also rise. Actually, it will rise steeply when you move to PL 3 or 4; so steeply, some would call it exploding.
 
@@ -679,7 +679,7 @@ The script divides the inbound from the outbound *anomaly scores*. The incoming 
 
 There are probably some *false positives*. In practice, we have to make certain of this before we start fine tuning the rules. It would be totally wrong to assume a false positive based on a justified alarm and suppress the alarm in the future. Before tuning, we must ensure that no attacks are present in the log file. This is not always easy. Manual review helps, restricting to known IP addresses, pre-authentication, testing/tuning on a test system separated from the internet, filtering the access log by country of origin for the IP address, etc... It's a big topic and making general recommendations is difficult. But please do take this seriously.
 
-###Step 7: Handling false positives: Disabling individual rules
+### Step 7: Handling false positives: Disabling individual rules
 
 The simple way of dealing with a *false positive* is to simply disable the rule. We are thus making the alarm disappear by excluding a certain rule from the rule set. The CRS term for this technique is called *Rules Exclusion* or *Exclusion Rules*. It is called *Rule* because this exclusion involved writing rules or directives resembling rules themselves.
 
@@ -734,7 +734,7 @@ As with the startup rule exclusions, we are not limited to an exclusion by rule 
 
 Startup time rule exclusions and runtime rule exclusions have the same effect, but internally, they are really different. With the runtime exclusions, you gain granular control at the cost of performance, as the exclusion is being evaluated for every single request. Startup time exclusions are performing faster and they are easier to read and write.
 
-###Step 8: Handling false positives: Disabling individual rules for specific parameters
+### Step 8: Handling false positives: Disabling individual rules for specific parameters
 
 Next we look at excluding an individual parameter from being evaluated by a specific rule. So unlike our example 920300, which looked at the specific Accept header, we are now targeting rules examining the ARGS group of variables.
 
@@ -785,7 +785,7 @@ This section was very important. Therefore, to summarize once again: We define a
 
 With this, we have seen all basic methods to handle false positives via rule exclusions. You now use the patterns for *excusion rules* described above to work through the various *false positives*. 
 
-###Step 9: Readjusting the anomaly threshold
+### Step 9: Readjusting the anomaly threshold
 
 Handling false positives is tedious at times. However, with the goal of protecting the application, it is most certainly worthwhile. When we introduced the statistic script I stated that we should make sure that at least 99.99% of requests pass through the rule set without any false positives. The remaining positives, the ones caused by attackers, should be blocked. But we are still running with an anomaly limit of 1,000. We need to reduce this to a decent level. Any limit above 30 or 40 is unlikely to stop anything serious. With a threshold of 20, you start to see an effect and then with 10 you get fairly good protection from standard attackers. Even if an individual rule only scores 5 points, some attack classes like SQL injections typically trigger multiple alarms, so a limit of 10 catches quite a few attack requests. In other categories, the coverage with rules is less extensive. This means, the accumulation of multiple rules is less intense. So it is perfectly possible to stay beneath a score of 10 with a certain attack payload. That's why a limit of 5 for the inbound score and 4 for the outbound score gives you a good level security. These are the default values of the CRS.
 
@@ -850,18 +850,18 @@ For the outbound responses, the situation is a bit simpler as you will hardly se
 
 I think the tuning concept and the theory are now quite clear. In the next tutorial, we will continue with tuning false positives to gain some practice with the methods demonstrated here. And I will also introduce a script which helps with the construction of the more complicated exclusion rules.
 
-###Step 10 (Goodie): Summary of the ways of combating false positives
+### Step 10 (Goodie): Summary of the ways of combating false positives
 
 It is possibly best to summarize the tuning directives in a graphic. So here is a cheatsheet for your use!
 
 <a href="https://www.netnea.com/cms/rule-exclusion-cheatsheet-download/"><img src="https://www.netnea.com/files/tutorial-7-rule-exclusion-cheatsheet_small.png" alt="Rule Exclusion CheatSheet" width="476" height="673" /></a>
 
 
-###References
+### References
 - [OWASP ModSecurity Core Rule Set](https://coreruleset.org)
 - [Spider Labs Blog Post: Exception Handling](http://blog.spiderlabs.com/2011/08/modsecurity-advanced-topic-of-the-week-exception-handling.html)
 - [ModSecurity Reference Manual](https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual)
 
-### License / Copying / Further use
+###  License / Copying / Further use
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
