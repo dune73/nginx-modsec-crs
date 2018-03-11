@@ -1,14 +1,14 @@
-##Handling False Positives with the OWASP ModSecurity Core Rule Set
+## Handling False Positives with the OWASP ModSecurity Core Rule Set
 
-###What are we doing?
+### What are we doing?
 
 To successfully ward off attackers, we are reducing the number of *false positives* for a fresh installation of *OWASP ModSecurity Core Rules* and set the anomaly limits to a stricter level step by step.
 
-###Why are we doing this?
+### Why are we doing this?
 
 A fresh installation of *core rules* will typically have some false alarms. In some special cases, namely at higher paranoia levels, there can be thousands of them. In the last tutorial, we saw a number of approaches for suppressing individual false alarms. It's always hard at the beginning. What we're missing is a strategy for coping with different kinds of false alarms. Reducing the number of false alarms is the prerequisite for lowering the *Core Rule Set* (CRS) anomaly threshold and this, in turn, is required in order to use *ModSecurity* to actually ward off attackers. And only after the false alarms really are disabled, or at least curtailed to a large extent, do we get a picture of the real attackers.
 
-###Requirements
+### Requirements
 
 * An NGINX web server, ideally one created using the file structure shown in [Tutorial 1 (Compiling a NGINX web server)](https://www.netnea.com/cms/nginx-tutorial-1_compiling-nginx/).
 * Understanding of the minimal configuration [Tutorial 2 (Configuring a Minimal NGINX Web Server)](https://www.netnea.com/cms/nginx-tutorial-2_minimal-nginx-configuration/).
@@ -21,11 +21,11 @@ There is no point in learning to fight false positives on a lab server without t
 
 It is difficult to provide real production logs for an exercise due to all the sensitive data in the logs. So, I went and created false positives from scratch. With the Core Rule Set 2.2.x, this would have been simple, but with the 3.0 release (CRS3), most of the false positives in the default install are now gone. What I did was set the CRS to Paranoia Level 4 and then install a local Drupal site. I then published a couple of articles and then read the articles in the browser. Rinse and repeat up to 10,000 requests.
 
-Drupal and the core rules are not really in a loving relationship. Whenever the two software packages meet, they tend to have a falling out with each other, since the CRS is so pedantic and Drupal's habit of having square brackets in parameter names drives the CRS crazy. However, the default CRS3 installation at Paranoia Level 1, and especially the new optional exclusion rules for Drupal (see the `crs-setup.conf` file and [this blog post](https://www.netnea.com/cms/2016/11/22/securing-drupal-with-modsecurity-and-the-core-rule-set-crs3/) for details), wards off almost all of the remaining false positives with a core Drupal installation.
+Drupal and the Core Rule Set not really in a loving relationship. Whenever the two software packages meet, they tend to have a falling out with each other, since the CRS is so pedantic and Drupal's habit of having square brackets in parameter names drives the CRS crazy. However, the default CRS3 installation at Paranoia Level 1, and especially the new optional exclusion rules for Drupal (see the `crs-setup.conf` file and [this blog post](https://www.netnea.com/cms/2016/11/22/securing-drupal-with-modsecurity-and-the-core-rule-set-crs3/) for details), wards off almost all of the remaining false positives with a core Drupal installation.
 
 But things look completely different when you do not use these exclusion rules and if you raise the Paranoia Level to 4, you will get plenty of false positives. For the 10,000 requests in my test run, I received over 27,000 false alarms. That should do for a training session.
 
-###Step 1: Defining a Policy to Fight False Positives
+### Step 1: Defining a Policy to Fight False Positives
 
 The problem with false positives is that if you are unlucky, they flood you like an avalanche and you do not know where to start the clean up. What you need is a plan and there is no official documentation proposing one. So here we go: This is my recommended approach to fighting false alarms:
 
@@ -44,16 +44,46 @@ The problem with integrating ModSecurity in production is the fact that false po
 There is another question that we need to get out of the way: Doesn't disabling rules actually lower the security of the site? Yes it does, but we need to keep things in perspective. In an ideal setup, all rules would be intact, the paranoia level would be very high (thus a total of 200 rules in place) and the anomaly limit very low; but the application would run without any problems or false alarms. But in practice, this won't work outside of the rarest of cases. If we raise the anomaly threshold, then the alerts are still there, but the attackers are no longer affected. If we reduce the paranoia level, we disable dozens of rules with one setting. If we talk to the developers about changing their software so that the false positives go away, we spend a lot of time arguing without much chance of success (at least in my experience). So disabling a single rule from a set of 200 rules is the best of all the bad solutions. The worst of all the bad solutions would be to disable ModSecurity altogether. And as this is very real in many organizations, I would rather disable individual rules based on a false positive than run the risk of being forced to kill the WAF.
 
 
-###Step 2: Getting an Overview
+### Step 2: Getting an Overview
 
-The character of the application, the paranoia level and the amount of traffic all influence the amount of false positives you get in your logs. In the first run, a couple of thousand or one hundred thousand requests max will do. Once you have that in your access log, it's time to take a look. Let's get an overview of the situation: Let's look at the example logs!
+The character of the application, the paranoia level and the amount of traffic all influence the amount of false positives you get in your logs. In the first run, a couple of thousand or one hundred thousand requests max will do. In the previous tutorial, we added a special rule, 980145, that would report the anomaly score for every request, also those requests, that did not trigger any alerts. We can thus use the messages this rule generated to get an overview and to put the alerts into perspective.
 
-One would think that the error log with the alerts is the place to go. But, we are looking at the access log first. We defined the log format in a way that gives us the anomaly scores for every request. This helps us with this step.
-
-In the previous tutorial, we used the script [modsec-positive-stats.rb](https://www.netnea.com/files/modsec-positive-stats.rb). We return to this script with the example access log as the target:
+Let's take a first look:
 
 ```bash
-$> cat tutorial-8-example-access.log | alscores | modsec-positive-stats.rb
+$> cat tutorial-8-nginx-example-error.log | grep \"980145\" | melmsg
+...
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 30 0
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 0 0
+Incoming and Outgoing Score: 78 0
+Incoming and Outgoing Score: 35 0
+```
+
+The set of aliases, we loaded in the previous tutorial, has an alias, that extracts these scores directly:
+
+```bash
+$> cat tutorial-8-nginx-example-error.log | melscores
+...
+0;0
+0;0
+0;0
+0;0
+30;0
+0;0
+0;0
+78;0
+35;0
+```
+
+That's neat and tidy. I have prepared a script that takes this as input and generates some statistics: [modsec-positive-stats.rb](https://www.netnea.com/files/modsec-positive-stats.rb). When we feed the output from above into this script, here is what we get:
+
+```bash
+$> cat tutorial-8-nginx-example-error.log | melscores | modsec-positive-stats.rb
 INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
 Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
 
@@ -319,27 +349,27 @@ We start with the request returning the highest anomaly score, we start on the r
 
 
 
-###Step 3: The first batch of rule exclusions
+### Step 3: The first batch of rule exclusions
 
 In order to find out what rules stand behind the anomaly scores 231 and 189, we need to link the access log to the error log. The unique request ID is this link:
 
 ```bash
-$> egrep " (231|189) [0-9-]+$" tutorial-8-example-access.log | alreqid | tee ids
-WBuxz38AAQEAAEdWQ5UAAACH
-WBux0H8AAQEAAEdWQ7QAAACT
-WBux0H8AAQEAAEdS9vYAAAAW
-WBux0H8AAQEAAEdWQ7kAAACE
-WBux0H8AAQEAAEdTojoAAABW
-WBux0H8AAQEAAEdS9v4AAAAA
-WBux0H8AAQEAAEdTokEAAABL
+$> egrep "Incoming and Outgoing Score: (231|189)" tutorial-8-nginx-example-error.log | melunique_id | tee ids
+15207659206634.951821
+1520762406123.376616
+1520761580928.688940
+1520762346029.962809
+1520761746711.755545
+1520761384821.651638
+1520761887799.894320
 ```
 
-With this one-liner, we *grep* for the requests with score 231 or 189. We know it is the second item from the end of the log line. The final value is the outgoing anomaly score. In our case, all responses scored 0, but theoretically, this value could be any number or undefined (-> `-`) so it is generally a good practice to write the pattern this way. The alias *alreqid* extracts the unique ID and *tee* will show us the IDs and write them to the file *ids* at the same time.
+With this one-liner, we *grep* for the requests with score 231 or 189. We can easily grep for the message of the rule 981145 and then the scores we are interested in. The alias *melunique_id* extracts the unique ID and *tee* will show us the IDs and write them to the file *ids* at the same time.
 
 We can then take the IDs in this file and use them to extract the alerts belonging to the requests we're focused on. We use `grep -f` to perform this step. The `-F` flag tells *grep* that our pattern file is actually a list of fixed strings separated by newlines. Thus equipped, *grep* is a lot more efficient than without the flag.  The *melidmsg* alias extracts the ID and the message explaining the alert. Combining both is very helpful. The already familiar *sucs* alias is then used to sum it all up:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | melidmsg | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep -v \"980145\" | melidmsg | sucs
       7 921180 HTTP Parameter Pollution (ARGS_NAMES:ids[])
      12 942450 SQL Hex Encoding Identified
      35 942431 Restricted SQL Character Anomaly Detection (args): # of special characters exceeded (6)
@@ -372,7 +402,7 @@ SecRuleRemoveById 920273
 Next are the alerts for 942432:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 942432 | melmatch | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 942432 | melmatch | sucs
      75 ARGS:ids[]
      75 ARGS_NAMES:ids[]
 ``` 
@@ -389,7 +419,7 @@ The next one is 942450. This is the rule looking for traces of hex encoding. Thi
 
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 942450 | melmatch | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 942450 | melmatch | sucs
       6 REQUEST_COOKIES:98febd3dhf84de73ab2e32889dc5f0x032a9
       6 REQUEST_COOKIES_NAMES:SESS29af1facda0a866a687d5055f0x034ca
 ```
@@ -405,14 +435,14 @@ SecRuleUpdateTargetById 942450 "!REQUEST_COOKIES_NAMES"
 Three more to go: 921180, 942431 and 942130. We start with the latter:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log | grep 942130 | melmatch | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error.log | grep 942130 | melmatch | sucs
      75 ARGS:ids[]
 ```
 
 So this is always the same parameter *ids[]*, which is already familiar to us. Maybe it's worth looking at the URI to understand how this is happening:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 942130 | meluri | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 942130 | meluri | sucs
      75 /drupal/index.php/contextual/render
 ```
 
@@ -420,7 +450,7 @@ So this is always the same URI. Let's exclude the parameter `ids[]` from being e
 
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 942130 | modsec-rulereport.rb --mode combined
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 942130 | modsec-rulereport.rb --mode combined
 
 75 x 942130 SQL Injection Attack: SQL Tautology Detected.
 --------------------------------------------------------------------------------
@@ -446,7 +476,7 @@ This is script is very handy. Let's throw in 942431 and see what happens:
 
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 942431 | modsec-rulereport.rb --mode combined
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 942431 | modsec-rulereport.rb --mode combined
 35 x 942431 Restricted SQL Character Anomaly Detection (args): # of special characters exceeded (6)
 ---------------------------------------------------------------------------------------------------
       # ModSec Rule Exclusion: 942431 : Restricted SQL Character Anomaly Detection (args): …
@@ -471,7 +501,7 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/contextual/render" \
 And now 921180:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error.log  | grep 921180 | modsec-rulereport.rb --mode combined
+$> grep -F -f ids tutorial-8-nginx-example-error.log  | grep 921180 | modsec-rulereport.rb --mode combined
 
 7 x 921180 HTTP Parameter Pollution (ARGS_NAMES:ids[])
 ------------------------------------------------------
@@ -495,35 +525,32 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/contextual/render" \
 With this, we have covered these seven highly scoring requests (189 and 231). Writing these six rule exclusions was a bit cumbersome, but the script seems to be a real improvement to the process. The rest will be faster. Promise.
 
 
-###Step 4: Reducing the anomaly score threshold
+### Step 4: Reducing the anomaly score threshold
 
 We have tuned away the alerts leading to the highest anomaly scores. Actually, anything above 100 is now gone. In a production setup, I would deploy the updated configuration and observe the behaviour a bit. If the high scores are really gone, then it is time to reduce the anomaly limit. A typical first step is from 1,000 to 100. Then we do more rules exclusions, reduce to 50 or so, then to 20, 10 and 5. In fact, a limit of 5 is really strong (first critical alert blocks a request), but for sites with less security needs, a limit of 10 might just be good enough. Anything above does not really block attackers.
 
 But before we get there, we need to add few more rule exclusions.
 
-
-
-###Step 5: The second batch of rule exclusions
+### Step 5: The second batch of rule exclusions
 
 After the first batch of rule exclusions, we would observe the service and end up with the following new logs:
 
-* [tutorial-8-example-access-round-2.log](https://www.netnea.com/files/tutorial-8-example-access-round-2.log)
-* [tutorial-8-example-error-round-2.log](https://www.netnea.com/files/tutorial-8-example-error-round-2.log)
+* [tutorial-8-nginx-example-access-round-2.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-2.log)
+* [tutorial-8-nginx-example-error-round-2.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-2.log)
 
 We start again with a look at the score distribution:
 
 ```bash
-$> cat tutorial-8-example-access-round-2.log | alscores | modsec-positive-stats.rb
-
+$> cat tutorial-8-nginx-example-error-round-2.log | melscores | modsec-positive-stats.rb
 INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
 Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
 
 Empty or miss. incoming score   |      0 |   0.0000% |   0.0000% | 100.0000%
-Reqs with incoming score of   0 |   8944 |  89.4400% |  89.4400% |  10.5600%
-Reqs with incoming score of   1 |      0 |   0.0000% |  89.4400% |  10.5600%
-Reqs with incoming score of   2 |      0 |   0.0000% |  89.4400% |  10.5600%
-Reqs with incoming score of   3 |      0 |   0.0000% |  89.4400% |  10.5600%
-Reqs with incoming score of   4 |     20 |   0.2000% |  89.6400% |  10.3600%
+Reqs with incoming score of   0 |   8964 |  89.6400% |  89.6400% |  10.3600%
+Reqs with incoming score of   1 |      0 |   0.0000% |  89.6400% |  10.3600%
+Reqs with incoming score of   2 |      0 |   0.0000% |  89.6400% |  10.3600%
+Reqs with incoming score of   3 |      0 |   0.0000% |  89.6400% |  10.3600%
+Reqs with incoming score of   4 |      0 |   0.0000% |  89.6400% |  10.3600%
 Reqs with incoming score of   5 |    439 |   4.3900% |  94.0300% |   5.9700%
 Reqs with incoming score of   6 |      0 |   0.0000% |  94.0300% |   5.9700%
 Reqs with incoming score of   7 |      0 |   0.0000% |  94.0300% |   5.9700%
@@ -581,20 +608,16 @@ Reqs with incoming score of  58 |      0 |   0.0000% |  99.2400% |   0.7600%
 Reqs with incoming score of  59 |      0 |   0.0000% |  99.2400% |   0.7600%
 Reqs with incoming score of  60 |     76 |   0.7600% | 100.0000% |   0.0000%
 
-Incoming average:   1.3969    Median   0.0000    Standard deviation   6.3634
+Incoming average:   1.3889    Median   0.0000    Standard deviation   6.3627
 
 
 OUTGOING                     Num of req. | % of req. |  Sum of % | Missing %
 Number of outgoing req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
 
 Empty or miss. outgoing score   |      0 |   0.0000% |   0.0000% | 100.0000%
-Reqs with outgoing score of   0 |   9980 |  99.8000% |  99.8000% |   0.2000%
-Reqs with outgoing score of   1 |      0 |   0.0000% |  99.8000% |   0.2000%
-Reqs with outgoing score of   2 |      0 |   0.0000% |  99.8000% |   0.2000%
-Reqs with outgoing score of   3 |      0 |   0.0000% |  99.8000% |   0.2000%
-Reqs with outgoing score of   4 |     20 |   0.2000% | 100.0000% |   0.0000%
+Reqs with outgoing score of   0 |  10000 | 100.0000% | 100.0000% |   0.0000%
 
-Outgoing average:   0.0080    Median   0.0000    Standard deviation   0.1787
+Outgoing average:   0.0000    Median   0.0000    Standard deviation   0.0000
 ```
 
 If we compare this to the first run of the statistic script, we reduced the average score from 12.5 to 1.4. This is very impressive. So by focusing on a handful of high scoring requests, we improved the whole service by a lot.
@@ -604,8 +627,8 @@ We could expect the high scoring requests of 231 and 189 to be gone, but funnily
 Our next goal is the group of requests with a score of 60. Let's extract the rule IDs and then examine the alerts a bit.
 
 ```bash
-$> egrep " 60 [0-9-]+$" tutorial-8-example-access-round-2.log | alreqid > ids
-$> grep -F -f ids tutorial-8-example-error-round-2.log | melidmsg | sucs
+$> egrep "Incoming and Outgoing Score: 60" tutorial-8-nginx-example-error-round-2.log | melunique_id > ids
+$> grep -F -f ids tutorial-8-nginx-example-error-round-2.log | grep -v \"980145\" | melidmsg | sucs
      76 921180 HTTP Parameter Pollution (ARGS_NAMES:keys)
      76 942100 SQL Injection Attack Detected via libinjection
     152 942190 Detects MSSQL code execution and information gathering attempts
@@ -613,14 +636,14 @@ $> grep -F -f ids tutorial-8-example-error-round-2.log | melidmsg | sucs
     152 942260 Detects basic SQL authentication bypass attempts 2/3
     152 942270 Looking for basic sql injection. Common attack string for mysql, …
     152 942410 SQL Injection Attack
-$> grep -F -f ids tutorial-8-example-error-round-2.log | meluri | sucs
+$> grep -F -f ids tutorial-8-nginx-example-error-round-2.log | grep -v \"980145\" | meluri | sucs
     912 /drupal/index.php/search/node
 ```
 
 So this points to a search form and payloads resembling SQL injections (outside of the first rule 921180, which we have seen before). It's obvious that a search form will attract SQL injection attacks. But then I know this was legitimate traffic (I filled in the forms personally when I searched for SQL statements in the Drupal articles I had posted as an exercise) and we are now facing a dilemma: If we suppress the rules, we open a door for SQL injections. If we leave the rules intact and reduce the limit, we will block legitimate traffic. I think it is OK to say that nobody should be using the search form to look for sql statements in our articles. But I could also say that Drupal is smart enough to fight off SQL attacks via the search form. As this is an exercise, this is our position for the moment: Let's exclude these rules. Let's feed it all into our helper script:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-2.log | modsec-rulereport.rb -m combined
+$> grep -F -f ids tutorial-8-nginx-example-error-round-2.log | grep -v \"980145\" | modsec-rulereport.rb -m combined
 
 76 x 921180 HTTP Parameter Pollution (ARGS_NAMES:keys)
 ------------------------------------------------------
@@ -678,7 +701,7 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/search/node" \
 With 942100, the case it quite clear. But let's look at the alert message itself. There we see that ModSecurity used a special library to identify what it thought an SQL injection attempt. So instead of a regular expression, a dedicated injection parser was used.
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-2.log | grep 942100 | head -1
+$> grep -F -f ids tutorial-8-nginx-example-error-round-2.log | grep 942100 | head -1
 [2016-11-05 09:47:18.423889] [-:error] - - [client 127.0.0.1] ModSecurity: Warning. detected SQLi …
 using libinjection with fingerprint 'UEkn' [file …
 "/apache/conf/owasp-modsecurity-crs-3.0.0-rc1/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] …
@@ -701,7 +724,7 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/search/node" \
 With the remaining ones, we use a shortcut:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-2.log | grep -v "942100\|921180" | \
+$> grep -F -f ids tutorial-8-nginx-example-error-round-2.log | grep -v "942100\|921180\|980145" | \
 modsec-rulereport.rb -m combined | sort
 ...
       # ModSec Rule Exclusion: 942190 : Detects MSSQL code execution and information gathering attempts
@@ -744,18 +767,18 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/search/node" "phase:2,nolog,p
 And done. This time, we cleaned out all the scores above 50. Time to reduce the anomaly threshold to 50, let it rest a bit and then examine the logs for the third batch.
 
 
-###Step 6: The third batch of rule exclusions
+### Step 6: The third batch of rule exclusions
 
 Here are the new exercise files. It's still the same traffic, but with fewer alerts again thanks to the rule exclusions.
 
-* [tutorial-8-example-access-round-3.log](https://www.netnea.com/files/tutorial-8-example-access-round-3.log)
-* [tutorial-8-example-error-round-3.log](https://www.netnea.com/files/tutorial-8-example-error-round-3.log)
+* [tutorial-8-nginx-example-access-round-3.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-3.log)
+* [tutorial-8-nginx-example-error-round-3.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-3.log)
 
 
 This brings us to the following statistics (this time only printing numbers for the incoming requests):
 
 ```bash
-$> cat tutorial-8-example-access-round-3.log | alscores | modsec-positive-stats.rb --incoming
+$> cat tutorial-8-nginx-example-error-round-3.log | melscores | modsec-positive-stats.rb --incoming
 INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
 Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
 
@@ -779,8 +802,8 @@ So again, a great deal of the false positives disappeared because of a bunch of 
 
 
 ```bash
-$> egrep " (10|8) [0-9-]+$" tutorial-8-example-access-round-3.log | alreqid > ids
-$> grep -F -f ids tutorial-8-example-error-round-3.log | melidmsg | sucs
+$> egrep "Incoming and Outgoing Score: (10|8)" tutorial-8-nginx-example-error-round-3.log | melunique_id > ids
+$> grep -F -f ids tutorial-8-nginx-example-error-round-3.log | grep -v \"980145\" | melidmsg | sucs
       2 932160 Remote Command Execution: Unix Shell Code Found
     368 921180 HTTP Parameter Pollution (ARGS_NAMES:editors[])
     368 942431 Restricted SQL Character Anomaly Detection (args): # of special characters …
@@ -790,10 +813,10 @@ The first alert is funny: "Remote command execution." What's this?
 
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-3.log | grep 932160 | melmatch
+$> grep -F -f ids tutorial-8-nginx-example-error-round-3.log | grep 932160 | melmatch
 ARGS:account[pass][pass1]
 ARGS:account[pass][pass2]
-$> grep -F -f ids tutorial-8-example-error-round-3.log | grep 932160 | meldata
+$> grep -F -f ids tutorial-8-nginx-example-error-round-3.log | grep 932160 | meldata
 Matched Data: /bin/bash found within ARGS:account[pass
 Matched Data: /bin/bash found within ARGS:account[pass
 ```
@@ -839,7 +862,7 @@ SecRuleUpdateTargetById 930000-943999 "!ARGS:account[pass][pass2]"
 We are left with another instance of 921180, plus the 942431 which we have seen before too. Here is what the script proposes:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-3.log | grep "921180\|942431" | \
+$> grep -F -f ids tutorial-8-nginx-example-error-round-3.log | grep "921180\|942431" | \
 modsec-rulereport.rb -m combined 
 
 448 x 921180 HTTP Parameter Pollution (ARGS_NAMES:editors[])
@@ -867,17 +890,17 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/quickedit/attachments" \
 
 Time to reduce the limit once more (down to 10 this time) and see what happens.
 
-###Step 7: The fourth batch of rule exclusions
+### Step 7: The fourth batch of rule exclusions
 
 We have a new pair of logs: 
 
-* [tutorial-8-example-access-round-4.log](https://www.netnea.com/files/tutorial-8-example-access-round-4.log)
-* [tutorial-8-example-error-round-4.log](https://www.netnea.com/files/tutorial-8-example-error-round-4.log)
+* [tutorial-8-nginx-example-access-round-4.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-4.log)
+* [tutorial-8-nginx-example-error-round-4.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-4.log)
 
 These are the statistics:
 
 ```bash
-$> cat tutorial-8-example-access-round-4.log | alscores | modsec-positive-stats.rb --incoming
+$> cat tutorial-8-nginx-example-error-round-4.log | melscores | modsec-positive-stats.rb --incoming
 INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
 Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
 
@@ -896,8 +919,8 @@ It seems that we are almost done. What rules are behind these remaining alerts?
 
 
 ```bash
-$> cat tutorial-8-example-access-round-4.log | egrep " 5 [0-9-]+$"  | alreqid > ids
-$> grep -F -f ids tutorial-8-example-error-round-4.log  | melidmsg | sucs
+$> egrep "Incoming and Outgoing Score: 5" tutorial-8-nginx-example-error-round-4.log | melunique_id > ids
+$> grep -F -f ids tutorial-8-nginx-example-error-round-4.log | grep -v \"980145\" | melidmsg | sucs
      30 921180 HTTP Parameter Pollution (ARGS_NAMES:op)
      41 932160 Remote Command Execution: Unix Shell Code Found
     368 921180 HTTP Parameter Pollution (ARGS_NAMES:fields[])
@@ -906,7 +929,7 @@ $> grep -F -f ids tutorial-8-example-error-round-4.log  | melidmsg | sucs
 So our friend 921180 is back again for two parameters and another shell execution. Probably another occurrence of the password parameter. Let's check this:
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-4.log  | grep 921180 | modsec-rulereport.rb -m combined
+$> grep -F -f ids tutorial-8-nginx-example-error-round-4.log | grep 921180 | modsec-rulereport.rb -m combined
 
 398 x 921180 HTTP Parameter Pollution (ARGS_NAMES:op)
 -----------------------------------------------------
@@ -922,7 +945,7 @@ It's simple enough to add this in the usual place with new rule IDs. And then th
 
 
 ```bash
-$> grep -F -f ids tutorial-8-example-error-round-4.log  | grep 932160 | modsec-rulereport.rb -m combined
+$> grep -F -f ids tutorial-8-nginx-example-error-round-4.log | grep 932160 | modsec-rulereport.rb -m combined
 
 41 x 932160 Remote Command Execution: Unix Shell Code Found
 -----------------------------------------------------------
@@ -939,7 +962,7 @@ SecRuleUpdateTargetById 930000-943999 "!ARGS:pass"
 
 And with this, we are done. We have successfully fought all the false positives of a content management system with peculiar parameter formats and a ModSecurity rule set pushed to insanely paranoid levels. 
 
-###Step 8: Summarizing all rule exclusions
+### Step 8: Summarizing all rule exclusions
 
 Time to look back and rearrange the configuration file with all the rule exclusions. I have regrouped them a bit, I added some comments and reassigned rule IDs. As outlined before, it is not obvious how to arrange the rules. Here, I ordered them by ID, but also included a block where I cover the search form separately.
 
@@ -958,11 +981,13 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/quickedit/metadata" \
 SecRule REQUEST_URI "@beginsWith /drupal/core/install.php" \
     "phase:2,nolog,pass,id:10005,ctl:ruleRemoveTargetById=921180;TX:paramcounter_ARGS_NAMES:op"
 
+
 # ModSec Rule Exclusion: 942130 : SQL Injection Attack: SQL Tautology Detected.
 # ModSec Rule Exclusion: 942431 : Restricted SQL Character Anomaly Detection (args): …
 SecRule REQUEST_URI "@beginsWith /drupal/index.php/contextual/render" \
     "phase:2,nolog,pass,id:10006,ctl:ruleRemoveTargetById=942130;ARGS:ids[],\
                                  ctl:ruleRemoveTargetById=942431;ARGS:ids[]"
+
 
 # ModSec Rule Exclusion: 942431 : Restricted SQL Character Anomaly Detection (args): …
 SecRule REQUEST_URI "@beginsWith /drupal/index.php/quickedit/attachments" \
@@ -987,10 +1012,42 @@ SecRule REQUEST_URI "@beginsWith /drupal/index.php/search/node" "phase:2,nolog,p
 
 # === ModSecurity Core Rules Inclusion
 
-Include    /apache/conf/crs/rules/*.conf
+Include /nginx/conf/crs/rules/REQUEST-901-INITIALIZATION.conf
+Include /nginx/conf/crs/rules/REQUEST-903.9001-DRUPAL-EXCLUSION-RULES.conf
+Include /nginx/conf/crs/rules/REQUEST-903.9002-WORDPRESS-EXCLUSION-RULES.conf
+Include /nginx/conf/crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
+Include /nginx/conf/crs/rules/REQUEST-910-IP-REPUTATION.conf
+Include /nginx/conf/crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
+Include /nginx/conf/crs/rules/REQUEST-912-DOS-PROTECTION.conf
+Include /nginx/conf/crs/rules/REQUEST-913-SCANNER-DETECTION.conf
+Include /nginx/conf/crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
+Include /nginx/conf/crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
+Include /nginx/conf/crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
+Include /nginx/conf/crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
+Include /nginx/conf/crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
+Include /nginx/conf/crs/rules/REQUEST-933-APPLICATION-ATTACK-PHP.conf
+Include /nginx/conf/crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
+Include /nginx/conf/crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
+Include /nginx/conf/crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
+Include /nginx/conf/crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+Include /nginx/conf/crs/rules/RESPONSE-950-DATA-LEAKAGES.conf
+Include /nginx/conf/crs/rules/RESPONSE-951-DATA-LEAKAGES-SQL.conf
+Include /nginx/conf/crs/rules/RESPONSE-952-DATA-LEAKAGES-JAVA.conf
+Include /nginx/conf/crs/rules/RESPONSE-953-DATA-LEAKAGES-PHP.conf
+Include /nginx/conf/crs/rules/RESPONSE-954-DATA-LEAKAGES-IIS.conf
+Include /nginx/conf/crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf
+Include /nginx/conf/crs/rules/RESPONSE-980-CORRELATION.conf
 
+
+SecAction "id:980145,phase:5,pass,t:none,log,noauditlog,\
+    msg:'Incoming and Outgoing Score: %{TX.ANOMALY_SCORE} %{TX.OUTBOUND_ANOMALY_SCORE}'"
 
 # === ModSec Core Rules: Startup Time Rules Exclusions
+
+# ModSecurity Rule Excludsion: 980130 Suppress statistics for blocked requests by rule 980130
+#    (replaced by 980145, that we wrote ourselved)
+
+SecRuleRemoveById 980130
 
 # ModSec Rule Exclusion: 942450 : SQL Hex Encoding Identified
 SecRuleUpdateTargetById 942450 "!REQUEST_COOKIES"
@@ -1007,18 +1064,21 @@ SecRuleUpdateTargetById 930000-943999 "!ARGS:account[pass][pass1]"
 SecRuleUpdateTargetById 930000-943999 "!ARGS:account[pass][pass2]"
 SecRuleUpdateTargetById 930000-943999 "!ARGS:pass"
 
+
 ```
 
 
-###Step 9 (Goodie): Getting a quicker overview
+### Step 9 (Goodie): Getting a quicker overview
 
 If you do this the first time, it all looks a bit overwhelming. But then it's only been an hour of work or so, which seems reasonable - even more so if you stretch it out over multiple iterations. One thing to help you get up to speed is getting an overview of all the alerts standing behind the scores. It’s a good idea to have a look at the distribution of the scores as described above. A good next step is to get a report of how exactly the *anomaly scores* occurred, such as an overview of the rule violations for each anomaly score. The following construct generates a report like this. On the first line, we extract a list of anomaly scores from the incoming requests which actually appear in the log file. We then build a loop around these *scores*, read the *request ID* for each *score*, save it in the file `ids` and perform a short analysis for these *IDs* in the *error log*.
 
+$> egrep "Incoming and Outgoing Score: 5" tutorial-8-nginx-example-error-round-4.log | melunique_id > ids
+
 ```bash
-$> cat tutorial-8-example-access.log | alscorein | sort -n | uniq | egrep -v -E "^0" > scores
+$> cat tutorial-8-nginx-example-error.log | melscores | cut -d\; -f1 | sort -n | uniq > scores
 $> cat scores | while read S; do echo "INCOMING SCORE $S";\
-grep -E " $S [0-9-]+$" tutorial-8-example-access.log \
-| alreqid > ids; grep -F -f ids tutorial-8-example-error.log | melidmsg | sucs; echo ; done 
+grep -E "Incoming and Outgoing Score: $S" tutorial-8-nginx-example-error.log \
+| melunique_id > ids; grep -F -f ids tutorial-8-nginx-example-error.log | melidmsg | sucs; echo ; done 
 INCOMING SCORE 5
      30 921180 HTTP Parameter Pollution (ARGS_NAMES:op)
 
@@ -1108,10 +1168,10 @@ When you grow more proficient, you can reduce the number of iterations and tackl
 
 We have now reached the end of the block consisting of three *ModSecurity tutorials*. The next one will look into setting up a *reverse proxy*.
 
-###References
+### References
 - [Spider Labs Blog Post: Exception Handling](http://blog.spiderlabs.com/2011/08/modsecurity-advanced-topic-of-the-week-exception-handling.html)
 - [ModSecurity Reference Manual](https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual)
 
-### License / Copying / Further use
+###  License / Copying / Further use
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
