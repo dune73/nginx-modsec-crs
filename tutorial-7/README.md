@@ -203,7 +203,6 @@ SecAction "id:980145,phase:5,pass,t:none,log,noauditlog,\
 
 # ModSecurity Rule Excludsion: 980130 Suppress statistics for blocked requests by rule 980130
 #    (-> replaced by 980145, that we wrote ourselved)
-
 SecRuleRemoveById 980130
 
 ```
@@ -338,7 +337,6 @@ SecAction "id:980145,phase:5,pass,t:none,log,noauditlog,\
 
 # ModSecurity Rule Excludsion: 980130 Suppress statistics for blocked requests by rule 980130
 #    (-> replaced by 980145, that we wrote ourselved)
-
 SecRuleRemoveById 980130
 
 # ...
@@ -348,7 +346,7 @@ SecRuleRemoveById 980130
 
 We have embedded the Core Rule Set and are now ready for a test operation. The rules inspect requests and responses. They will trigger alarms if they encounter fishy requests, but they will not block any transaction, because the limits have been set very high. Let's give it a shot.
 
-### Step 4: Triggering alarms for testing purposes
+### Step 5: Triggering alarms for testing purposes
 
 For starters, we will do something easy. It is a request that will trigger exactly one rule by attempting to execute a bash shell. We know that our simple lab server is not vulnerable to such a blatant attack, but ModSecurity does not know this and will still try to protect us:
 
@@ -410,7 +408,7 @@ $> nikto -h localhost
 
 This scan should have triggered numerous *ModSecurity alarms* on the server. Let’s take a close look at the *NGINX error log*. In my case, there were over 30,000 entries in the error log. Combine this with the authorization messages and infos on many 404s (Nikto probes for files that do not exist on the server) and you end up with a fast-growing error log. The single Nikto run resulted in a 25 MB8.8 MB logfile. Looking over the audit log tree reveals 78 MB of logs. It's obvious: you need to keep a close eye on these log files or your server will collapse due to denial of service via log file exhaustion.
 
-### Step 5: Analyzing the alert messages
+### Step 6: Analyzing the alert messages
 
 So we are looking at 7,300 alerts. And even if the format of the entries in the error log may be clear, without a tool they are very hard to read, let alone analyze. A simple remedy is to use a few *shell aliases*, which extract individual pieces of information from the entries. They are stored in the alias file we discussed in the log format in Tutorial 5.
 
@@ -578,7 +576,7 @@ $> cat logs/error.log | melidmsg | sucs
 So that's something we can work with. It shows that the Core Rules detected a lot of malicious requests and we now have an idea which rules played a role in this. The non-statistical rules that triggered most frequently, 913100 and 913120, are no surprise, and when you look upwards in the output, this all makes a lot of sense.
 
 
-### Step 6: Evaluating false alarms
+### Step 7: First Encounter with False Alerts
 
 So the *Nikto* scan set off thousands of alarms. They were likely justified. In the normal use of *ModSecurity*, things are a bit different. The Core Rule Set is designed and optimized to have as few false alarms as possible in paranoia level 1. But in production use, there are going to be false positives sooner or later. Depending on the application, a normal installation will also see alarms and a lot of them will be false. And when you raise the paranoia level to become more vigilant towards attacks, the number of false positives will also rise. Actually, it will rise steeply when you move to PL 3 or 4; so steeply, some would call it exploding.
 
@@ -586,190 +584,122 @@ In order to run smoothly, the configuration has to be fine tuned first. Legitima
 
 False alarms are possible in both directions. Attacks that are not detected are called *false negatives*. The Core Rules are strict and careful to keep the number of *false negatives* low. An attacker needs to possess a great deal of savvy to circumvent the system of rules, especially at higher paranoia levels. Unfortunately, this strictness also results in alarms being triggered for normal requests. It is commonly the case that at a low degree of separation, you either get a lot of *false negatives* or a lot of *false positives*. Reducing the number of *false negatives* leads to an increase in *false positives* and vice versa. Both correlate highly with one another.
 
-We have to overcome this link: We want to increase the degree of separation in order to reduce the number of *false positives* without increasing the number of *false negatives*. We can do this by fine tuning the system of rules in a few places. We have to exclude certain rules from being executed for certain requests or parameters. But first we need to have a clear picture of the current situation: How many *false positives* are there and which of the rules are being violated in a particular context? How many *false positives* are we willing to allow on the system? Reducing them to zero will be extremely difficult to do, but percentages are something we can work with. A possible target would be: 99.99% of legitimate requests should pass without being blocked by the web application firewall. This means one request in 10,000 could be blocked as a false positive. This is realistic, but involves a bit of work depending on the application. 99.99% of requests without a false alarm is also a number where professional use starts. But I have setups where we are not willing to accept more than 1 false alarm in 1 million of requests. That's 99.9999%. Usually the tolerance lies between these numbers: between 1 in 10,000 and 1 in 1,000,000.
+We have to overcome this link: We want to increase the degree of separation in order to reduce the number of *false positives* without increasing the number of *false negatives*. We can do this by fine tuning the system of rules in a few places. We have to exclude certain rules from being executed for certain requests or parameters. Let's look at this in details and let's generate a false positive:
 
-To reach such a goal, we will need one or two tools to help us get a good footing. Specifically, we need to find out about these numbers. Then, in a second step, we look at the rule alerts in order to understand the requests that led to these alerts. We have created a rule 980145 that reports the anomaly scores of the requests. Let's try to extract these scores and to present them in a suitable form.
-
-In Tutorial 5 we worked with a sample log file containing 10,000 entries. We’ll be using this log file again here: [tutorial-5-example-access.log](https://www.netnea.com/nginx-tutorials/git/laboratory/tutorial-5/tutorial-5-example-access.log). The file comes from a real server, but the IP addresses, server names and paths have been simplified or rewritten. However, the information we need for our analysis is still there. Let’s have a look at the distribution of *anomaly scores*:
-
-```
-$> egrep -o "[0-9-]+ [0-9-]+$" tutorial-5-example-access.log | cut -d\  -f1 | sucs
-      1 21
-      2 41
-      8 5
-     11 2
-     17 3
-     41 -
-   9920 0
-$> egrep -o "[0-9-]+$" tutorial-5-example-access.log | sucs
-     41 -
-   9959 0
+```bash
+$> curl localhost/login/Login.do --data "password=k1ck-bin/bash"
+<html>
+<head><title>403 Forbidden</title></head>
+<body bgcolor="white">
+<center><h1>403 Forbidden</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
 ```
 
-The first command line reads the inbound *anomaly score*. It’s the second-to-last value in the *access log line*. We take the two last values (*egrep*) and then *cut* the first one out. We then sort the results using the familiar *sucs* alias. The outbound *anomaly score* is the last value in the *log line*. This is why there is no *cut* command on the second command line.
+There is nothing really wrong with this password outside of the fact, that the CRS thinks it's a remote command execution attempt:
 
-The results give us an idea of the situation: The vast majority of requests pass the *ModSecurity module* with no rule violation: 9920 requests with score 0. 80 requests violated one or more rules. This is not a standard situation for the Core Rules. In fact, I provoked additional false alarms to give us something to look at. The Core Rule Set is so optimized these days that you need a lot of traffic to get a reasonable amount of alerts - or you need to raise the paranoia level very high on a non-tuned system.
-
-A score of 41 appears twice, corresponding to a high number of serious rule infractions. This is very common in practice, where a serious SQL injection attempt sets off a series of alarms. In 41 cases, we didn’t get any score for the server’s responses. These are log entries of empty requests in which a connection with the client was established, but no request was made. We have taken this possibility into account in the regular expression using *egrep* and are also taking into account the default value, "-". Besides these empty entries, nothing else is conspicuous at all. This is typical, if a bit high. In all likelihood, we will be seeing a fair number of violations from the requests and very few alarms from the responses.
-
-But this still doesn’t give us the right idea about the *tuning steps* that would be needed to run this install smoothly. To present this information in a suitable form, I have prepared a ruby script that analyzes *anomaly scores*. [modsec-positive-stats.rb](https://www.netnea.com/files/modsec-positive-stats.rb) (You might have to install the _ruby_ package to get it working). It takes the two anomaly scores as input and we need to separate them with a semicolon in order to pipe them into the script. We can do this like this:
-
-```
-$> cat tutorial-5-example-access.log  | egrep -o "[0-9-]+ [0-9-]+$" | tr " " ";" | modsec-positive-stats.rb
-INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
-Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
-
-Empty or miss. incoming score   |     41 |   0.4100% |   0.4100% |  99.5900%
-Reqs with incoming score of   0 |   9920 |  99.2000% |  99.6100% |   0.3900%
-Reqs with incoming score of   1 |      0 |   0.0000% |  99.6100% |   0.3900%
-Reqs with incoming score of   2 |     11 |   0.1100% |  99.7200% |   0.2800%
-Reqs with incoming score of   3 |     17 |   0.1699% |  99.8900% |   0.1100%
-Reqs with incoming score of   4 |      0 |   0.0000% |  99.8900% |   0.1100%
-Reqs with incoming score of   5 |      8 |   0.0800% |  99.9700% |   0.0300%
-Reqs with incoming score of   6 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   7 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   8 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   9 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  10 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  11 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  12 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  13 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  14 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  15 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  16 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  17 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  18 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  19 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  20 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  21 |      1 |   0.0100% |  99.9800% |   0.0200%
-Reqs with incoming score of  22 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  23 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  24 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  25 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  26 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  27 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  28 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  29 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  30 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  31 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  32 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  33 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  34 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  35 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  36 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  37 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  38 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  39 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  40 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  41 |      2 |   0.0200% | 100.0000% |   0.0000%
-
-Average:   0.0217        Median   0.0000         Standard deviation   0.6490
-
-
-OUTGOING                     Num of req. | % of req. |  Sum of % | Missing %
-Number of outgoing req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
-
-Empty or miss. incoming score   |     41 |   0.4100% |   0.4100% |  99.5900%
-Reqs with outgoing score of   0 |   9959 |  99.5900% | 100.0000% |   0.0000%
-
-Average:   0.0000        Median   0.0000         Standard deviation   0.0000
+```bash
+$> grep 980145 logs/error.log | tail -1 
+2018/03/11 12:48:25 [info] 6071#6071: *36 ModSecurity: Warning.  [file "conf/modsecurity.conf"] [line "117"] [id "980145"] [rev ""] [msg "Incoming and Outgoing Score: 5 0"] [data ""] [severity "0"] [ver ""] [maturity "0"] [accuracy "0"] [hostname "127.0.0.1"] [uri "/login/Login.do"] [unique_id "152076890543.106174"] [ref ""] while logging request, client: 127.0.0.1, server: localhost, request: "POST /login/Login.do HTTP/1.1", host: "localhost"
+$> grep 980145 logs/error.log | tail -1 | melunique_id 
+152076890543.106174
+$> grep 152076890543.106174 logs/error.log | melidmsg
+932160 Remote Command Execution: Unix Shell Code Found
+949110 Inbound Anomaly Score Exceeded (Total ...) ...
+949110 Inbound Anomaly Score Exceeded (Total ...) ...
+980145 Incoming and Outgoing Score: ...
 ```
 
-The script divides the inbound from the outbound *anomaly scores*. The incoming ones are handled first. Before the script can handle the scores, it describes how often an empty *anomaly score* has been found (*empty incoming score*). In our case, this was 41 times, as we saw before. Then comes the statement about *score 0*: 9920 requests. This is covering 99.2% of the requests. Together with the empty scores, this is already covering 99.61% (*Sum of %*). 0.39% had a higher *anomaly score* (*Missing %*). Above, we set out to have 99.99% of requests able to pass the server. We are about 0.38% or 38 requests away from this target. The next *anomaly score* is 2. It appears 11 times or 0.11%. The *anomaly score* 3 appears 17 times and a score of 5 can be seen 8 times. All in all, we are at 99.97%. Then there is one request with a score of 21 and finally 2 requests with with a score of 41. To achieve 99.99% coverage we have get to this limit (and, based on the log file, thus achieve 100% coverage).
+Here we first identified the last request in the log file, we extracted the unique id of the request and then filtered the complete error log for this request, extracting the rule ids and the message of the alerts. We still see the duplication of 941110, but more interestingly, we see that the suspicious password triggered 932160.  It does not take much thinking why that might be case. Let's look:
 
-There are probably some *false positives*. In practice, we have to make certain of this before we start fine tuning the rules. It would be totally wrong to assume a false positive based on a justified alarm and suppress the alarm in the future. Before tuning, we must ensure that no attacks are present in the log file. This is not always easy. Manual review helps, restricting to known IP addresses, pre-authentication, testing/tuning on a test system separated from the internet, filtering the access log by country of origin for the IP address, etc... It's a big topic and making general recommendations is difficult. But please do take this seriously.
+```bash
+$> grep 152076890543.106174 logs/error.log | grep 932160 | meldata
+Matched Data: bin/bash found within ARGS:password: k1ck-bin/bash
+```
 
-### Step 7: Handling false positives: Disabling individual rules
+Clearly a false positive that we want to get rid of. But how do we achieve this and what are our options?
+
+
+### Step 8: Handling false positives: Disabling individual rules
 
 The simple way of dealing with a *false positive* is to simply disable the rule. We are thus making the alarm disappear by excluding a certain rule from the rule set. The CRS term for this technique is called *Rules Exclusion* or *Exclusion Rules*. It is called *Rule* because this exclusion involved writing rules or directives resembling rules themselves.
 
 Excluding a rule completely takes very little effort, but it is, of course, potentially risky because the rule is not being disabled for just legitimate users, but for attackers as well. By completely disabling a rule, we are restricting the capability of *ModSecurity*. Or, expressed more drastically, we’re pulling the teeth out of the *WAF*.
 
-Especially at higher paranoia levels, there are rules that just fail to work with some applications and trigger false alarms in all sorts of situations. So there is a use for disabling a rule completely. One notable example is rule ID `920300`: *Request Missing an Accept Header*. There are just so many user agents that submit requests without an accept header, there is a rule dedicated to the problem. Let's raise the paranoia level to 2 by setting the `tx.paranoia_level` variable to 2 in rule ID 900,000.  Then we will send a request without an `Accept` header to trigger an alert as follows (I recommend returning the paranoia level to 1 again afterwards):
+Let's try this out for the sake of this exercise. We add the following two lines to the final section of `modsecurity.conf`:
 
 ```bash
-$> curl -v -H "Accept: " http://localhost/index.html
-...
-> GET /index.html HTTP/1.1
-> User-Agent: curl/7.32.0
-> Host: localhost
-...
-$> tail /nginx/logs/error.log | melidmsg
-920300 Request Missing an Accept Header
-```
+# ModSec Rule Exclusion: 932160 : Remote Command Execution: Unix Shell Code Found
+SecRuleRemoveById 932160
+``` 
 
-So the rule has been triggered as desired. Let us now exclude the rule. We have multiple options and we start with the simplest one: We exclude the rule at startup time for NGINX. This means it removes the rule from the set of loaded rules and no processor cycles will be spent on the rule once the server has started. Of course, we can only remove things which have been loaded before. So this directive has to be placed after the CRS include statement. In the config recipe earlier in this tutorial, we reserved some space for these sorts of exclusion rules. We fill in our exclusion directive in this location:
+In fact, we had used `SecRuleRemoveById` before when we axed 980130, and here we do the very same: We remove 932160 from the complete rule set for the complete server. It stops to exist for our installation; a measure that far too broad to be used in production for this rule but it's not yet the worst. We can also remove it by tag.
+
 
 ```bash
-# === ModSec Core Rules: Config Time Exclusion Rules (no ids)
-
-# ModSec Exclusion Rule: 920300 Request Missing an Accept Header
-SecRuleRemoveById 920300
-
+$> grep 152076890543.106174 logs/error.log | grep 932160 | meltags
+application-multi
+language-shell
+platform-unix
+attack-rce
+OWASP_CRS/WEB_ATTACK/COMMAND_INJECTION
+WASCTC/WASC-31
+OWASP_TOP_10/A1
+PCI/6.5.2
 ```
-The example comes with a comment, which describes the rule being excluded. This is a good practice, which you should adopt as well. We have the option to exclude by ID (as we just did), to add several comma separated rule IDs, to configure a rule range or we can select the rule by one of its tags. Here is an example using one of the tags of the rule 920,300:
+
+So if we want to really get rid of all remote command execution alerts, we could do the following replacing the SecRuleRemoveById from above:
 
 ```bash
-# ModSec Exclusion Rule: 920300 Request Missing an Accept Header
-SecRuleRemoveByTag "MISSING_HEADER_ACCEPT$"
+# ModSec Rule Exclusion: Rules tagged with "attack-rce"
+SecRuleRemoveByTag 'attack-rce'
 ```
-
-As you can see, this directive accepts regular expressions as parameters. Unfortunately, the support is not universal: For example, the *OR* functionality, expressed with a pipe character, is not implemented. In practice, you will have to try it out and see for yourself what works and what does not.
 
 Technically there an additional directive, `SecRuleRemoveByMsg`. However, the messages are not guaranteed to be stable between releases and they are not very consistent anyways. So you should not try to build exlcusion rules for the Core Rule Set via this directive.
 
-So these are startup rule exclusions. Excluding a rule in this manner is simple and readable, but it is also a drastic step which we will not use in a production setup very often. Because, if our issues with the rule 920300 are limited to a single legitimate agent checking the availability of our service by requesting the index page, we can limit the exclusion to this individual request. This is no longer a startup time rule exclusion, but a runtime exclusion which is being applied on certain conditions. Runtime exclusions leverage the *SecRule* directive combined with a special action executing the rule exclusion. This depends on the SecRule statement running before the rule in question is applied. That's why runtime rule exclusions have to be placed before the Core Rule Set include statement, where we also reserved a space for this type of exclusion rule:
+So these are startup rule exclusions. Excluding a rule in this manner is simple and readable, but it is also a drastic step which we will not use in a production setup very often. Because, if our issues with the rule 932160 are limited to a single URI where people submit their login credentials, then we can limit the exclusion to this individual request. This is no longer a startup time rule exclusion, but a runtime exclusion which is being applied on certain conditions. Runtime exclusions leverage the *SecRule* directive combined with a special action executing the rule exclusion. This depends on the SecRule statement running before the rule in question is applied. That's why runtime rule exclusions have to be placed before the Core Rule Set include statement, where we also reserved a space for this type of exclusion rule:
 
 ```bash
 # === ModSec Core Rules: Runtime Exclusion Rules (ids: 10000-49999)
 
-# ModSec Exclusion Rule: 920300 Request Missing an Accept Header
-SecRule REQUEST_FILENAME "@streq /index.html" \
-    "phase:1,nolog,pass,id:10000,ctl:ruleRemoveById=920300"
+# ModSec Exclusion Rule: 932160 Remote Command Execution: Unix Shell Code Found
+SecRule REQUEST_FILENAME "@streq /login/Login.do" \
+    "phase:1,nolog,pass,id:15000,ctl:ruleRemoveById=932160"
 ```
 
-Now this is harder to read. Watch out for the *ctl* statement: `ctl:ruleRemoveById=920300`. This is the control action, which is used for runtime changes of the configuration of the ModSecurity rule engine. We use *ruleRemoveById* as the control statement and apply it to rule ID 920300. This block is placed within a standard *SecRule* directive. This allows us to use the complete power of *SecRule* to exclude rule 920300 in very specific situations. Here we exclude it based on the path of the request, but we could apply it depending on the agent's IP address - or a combination of the two in a chained rule statement.
+Now this is harder to read. Watch out for the *ctl* statement: `ctl:ruleRemoveById=932160`. This is the control action, which is used for runtime changes of the configuration of the ModSecurity rule engine. We use *ruleRemoveById* as the control statement and apply it to rule ID 932160. This block is placed within a standard *SecRule* directive. This allows us to use the complete power of *SecRule* to exclude rule 932160 in very specific situations. Here we exclude it based on the path of the request, but we could apply it depending on the agent's IP address - or a combination of the two in a chained rule statement.
 
-As with the startup rule exclusions, we are not limited to an exclusion by rule ID. Exclusions by tag will work just as well (`ctl:ruleRemoveByTag`). Again, regular expressions are supported, but only to a certain extent.
+As with the startup rule exclusions, we are not limited to an exclusion by rule ID. Exclusions by tag will work just as well (`ctl:ruleRemoveByTag`).
 
 Startup time rule exclusions and runtime rule exclusions have the same effect, but internally, they are really different. With the runtime exclusions, you gain granular control at the cost of performance, as the exclusion is being evaluated for every single request. Startup time exclusions are performing faster and they are easier to read and write.
 
-### Step 8: Handling false positives: Disabling individual rules for specific parameters
+### Step 9: Handling false positives: Disabling individual rules for specific parameters
 
-Next we look at excluding an individual parameter from being evaluated by a specific rule. So unlike our example 920300, which looked at the specific Accept header, we are now targeting rules examining the ARGS group of variables.
+Next we look at excluding an individual parameter from being evaluated by a specific rule. So unlike our examples removing the rule 932160 completely, we are now targeting rules examining the ARGS group of variables.
 
-Let's assume we have a password field in an authentication scheme like we used in the previous tutorial. Users are advised to use hard to guess passwords with lots of special characters which leads to the Core Rule Set sending a steady stream of alerts because of the strange passwords in this parameter field.
-
-Here is an artificial example triggering the rule 942100, which leverages the libinjection library to detect SQL injections. Execute this command and you get an alert:
+I have stated before that removing the complete rule because of the false alert was wrong. It is much better to only remove the rule for the password parameter, because it serves a very important purpose with many other parameters. Ideally, we want to exclude the parameter password from being examined by this rule. Here is the startup time rule exclusion performing this task:
 
 ```bash
-$> curl --data "password=' or f7x=gZs" localhost/login/login.do
+# ModSec Exclusion Rule: 932160 Remote Command Execution: Unix Shell Code Found
+SecRuleUpdateTargetById 932160 !ARGS:password
 ```
 
-There is little wrong with this password from a security perspective. In fact, we should just disable this rule. But of course, it would be wrong to disable this rule completely. It serves a very important purpose with many other parameters. Ideally, we want to exclude the parameter password from being examined by this rule. Here is the startup time rule exclusion performing this task:
-
-```bash
-# ModSec Exclusion Rule: 942100 SQL Injection Attack Detected via libinjection
-SecRuleUpdateTargetById 942100 !ARGS:password
-```
-
-This directive adds "not ARGS:password" to the list of parameters to be examined by rule 942100. This effectively excludes the parameter from the evaluation. This directive also accepts rule ranges as parameters. Of course, this directive also exists in a variant where we select the rule via its tag:
+This directive adds "not ARGS:password" to the list of parameters to be examined by rule 932160. This effectively excludes the parameter from the evaluation. This directive also accepts rule ranges as parameters. Of course, this directive also exists in a variant where we select the rule via its tag:
 
 
 ```bash
-# ModSec Exclusion Rule: 942100 SQL Injection Attack Detected via libinjection
-SecRuleUpdateTargetByTag "attack-sqli" !ARGS:password
+# ModSec Exclusion Rule: Rules tagged with "attack-rce"
+SecRuleUpdateTargetByTag "attack-rce" !ARGS:password
 ```
 
-The tag we are using in this example, *attack-sqli*, points to a wide range of SQL injection rules. So it will prevent a whole class of rules from looking at the password parameter. This makes sense for this password parameter, but it might go too far for other parameters. So it really depends on the application and the parameter in question.
+A password parameter is generally only used on the login request and where you update the password. So we can work with the `SecRuleUpdateTargetById` directive in practice and all occurrences of said parameter are exempt from examination by rule 932160. But let me stress, that this directive is server-wide. If you have multiple services with multiple NGINX virtual hosts each running a different application, then `SecRuleUpdateTargetById` and `SecRuleUpdateTargetByTag` will disable the said rule or rules respectively for all occurrences of the password parameter on the whole server.
 
-A password parameter is generally only used on the login request, so we can work with the `SecRuleUpdateTargetById` directive in practice, so that all occurrences of said parameter are exempt from examination by rule 942100. But let me stress, that this directive is server-wide. If you have multiple services with multiple NGINX virtual hosts each running a different application, then `SecRuleUpdateTargetById` and `SecRuleUpdateTargetByTag` will disable the said rule or rules respectively for all occurrences of the password parameter on the whole server.
-
-So let's assume you want to exclude *password* only under certain conditions. For example the rule should still be active when a scanner is submitting the request. One fairly good way to detect scanners is by looking at the *Referer* request header. So the idea is to check the correct header and then exclude the parameter from examination by 942100. This runtime rule exclusion works with a control action, similar to the ones we have seen before:
+So let's assume you want to exclude *password* only under certain conditions. For example the rule should still be active when a scanner is submitting the request. One fairly good way to detect scanners is by looking at the *Referer* request header. So the idea is to check the correct header and then exclude the parameter from examination by 932160. This runtime rule exclusion works with a control action, similar to the ones we have seen before:
 
 ```bash
 SecRule REQUEST_HEADERS:Referer "@streq http://localhost/login/displayLogin.do" \
-    "phase:1,nolog,pass,id:10000,ctl:ruleRemoveTargetById=942100;ARGS:password"
+    "phase:1,nolog,pass,id:15000,ctl:ruleRemoveTargetById=932160;ARGS:password"
 ```
 
 The format of the control action is really difficult to grasp now: In addition to the rule ID, we add a semicolon and then the password parameter as part of the ARGS group of variables. In ModSecurity, this is called the ARGS collection with the colon as separator. Try to memorize this! 
@@ -778,77 +708,12 @@ In professional use, this is likely the exclusion rule construct that is used th
 
 ```bash
 SecRule REQUEST_HEADERS:Referer "@streq http://localhost/login/displayLogin.do" \
-    "phase:1,nolog,pass,id:10000,ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:password"
+    "phase:1,nolog,pass,id:15000,ctl:ruleRemoveTargetByTag=attack-rce;ARGS:password"
 ```
 
 This section was very important. Therefore, to summarize once again: We define a rule to suppress another rule. We use a pattern for this which lets us define a path as a condition. This enables us to disable rules for individual parts of an application but only in places where false alarms occur. And at the same time, it prevents us from disabling rules on the entire server.
 
 With this, we have seen all basic methods to handle false positives via rule exclusions. You now use the patterns for *excusion rules* described above to work through the various *false positives*. 
-
-### Step 9: Readjusting the anomaly threshold
-
-Handling false positives is tedious at times. However, with the goal of protecting the application, it is most certainly worthwhile. When we introduced the statistic script I stated that we should make sure that at least 99.99% of requests pass through the rule set without any false positives. The remaining positives, the ones caused by attackers, should be blocked. But we are still running with an anomaly limit of 1,000. We need to reduce this to a decent level. Any limit above 30 or 40 is unlikely to stop anything serious. With a threshold of 20, you start to see an effect and then with 10 you get fairly good protection from standard attackers. Even if an individual rule only scores 5 points, some attack classes like SQL injections typically trigger multiple alarms, so a limit of 10 catches quite a few attack requests. In other categories, the coverage with rules is less extensive. This means, the accumulation of multiple rules is less intense. So it is perfectly possible to stay beneath a score of 10 with a certain attack payload. That's why a limit of 5 for the inbound score and 4 for the outbound score gives you a good level security. These are the default values of the CRS.
-
-But how to lower the limit from 1000 to 5 without harming production? It takes a certain trust in your tuning skills to perform this step. A more natural approach is to go over multiple iterations: An initial tuning round is performed with a limit of 1,000. When the most blatant sources of false positives are eliminated this way, you wait for a given amount of time and then lower the limit to 50 and examine the logs again. Tune and reduce to 30, then 20, 10 and finally 5. After every reduction, you need to check the new log files and run the statistic script. By looking at the statistics, you see what you can expect from a reduction of the limit. Let's look once more at the stats we examined before:
-
-```bash
-INCOMING                     Num of req. | % of req. |  Sum of % | Missing %
-Number of incoming req. (total) |  10000 | 100.0000% | 100.0000% |   0.0000%
-
-Empty or miss. incoming score   |     41 |   0.4100% |   0.4100% |  99.5900%
-Reqs with incoming score of   0 |   9920 |  99.2000% |  99.6100% |   0.3900%
-Reqs with incoming score of   1 |      0 |   0.0000% |  99.6100% |   0.3900%
-Reqs with incoming score of   2 |     11 |   0.1100% |  99.7200% |   0.2800%
-Reqs with incoming score of   3 |     17 |   0.1699% |  99.8900% |   0.1100%
-Reqs with incoming score of   4 |      0 |   0.0000% |  99.8900% |   0.1100%
-Reqs with incoming score of   5 |      8 |   0.0800% |  99.9700% |   0.0300%
-Reqs with incoming score of   6 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   7 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   8 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of   9 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  10 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  11 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  12 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  13 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  14 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  15 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  16 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  17 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  18 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  19 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  20 |      0 |   0.0000% |  99.9700% |   0.0300%
-Reqs with incoming score of  21 |      1 |   0.0100% |  99.9800% |   0.0200%
-Reqs with incoming score of  22 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  23 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  24 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  25 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  26 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  27 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  28 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  29 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  30 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  31 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  32 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  33 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  34 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  35 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  36 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  37 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  38 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  39 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  40 |      0 |   0.0000% |  99.9800% |   0.0200%
-Reqs with incoming score of  41 |      2 |   0.0200% | 100.0000% |   0.0000%
-```
-
-10,000 requests is not really a big log file, but it will do for our purposes. Based on the data, we can immediately decide to reduce the limit to 50. It is unlikely that a request will hit that threshold - and if it does, it is an isolated transaction which is very rare.
-
-Reducing the limit to 30 would probably be a bit overzealous, because the column on the right states that 0.02% of the requests scored higher than 30. We should get rid of the false positives at 41 before we should reduce the limit to 30. 
-
-With this statistical data, the iterative tuning process becomes quite clear: The *modsec-positive-stats.rb* script brings sense and reason to the process.
-
-For the outbound responses, the situation is a bit simpler as you will hardly see any scores above 5. There simply are not enough rules to have any cumulative effect; probably because there is not much you can check in a response. So, I reduce the response threshold down to 5 or 4 rather quickly (which happens to be the default value of the Core Rule Set outbound request threshold).
-
-I think the tuning concept and the theory are now quite clear. In the next tutorial, we will continue with tuning false positives to gain some practice with the methods demonstrated here. And I will also introduce a script which helps with the construction of the more complicated exclusion rules.
 
 ### Step 10 (Goodie): Summary of the ways of combating false positives
 
