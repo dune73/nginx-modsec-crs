@@ -1,7 +1,7 @@
 ## Embedding ModSecurity 
 
 ### What are we doing?
-We are compiling the ModSecurity module, embedding it in the Apache web server, creating a base configuration and dealing with _false positives_ for the first time.
+We are compiling the ModSecurity module, embedding it in the NGINX web server, creating a base configuration and dealing with _false positives_ for the first time.
 
 ### Why are we doing this?
 
@@ -60,7 +60,7 @@ $> cd modsecurity-v3.0.0/
 $> ./configure --prefix=/opt/modsecurity-3.0.0 --enable-mutex-on-pm
 ```
 
-We created the <i>/apache</i> symlink in the tutorial on compiling Apache. This again comes to our assistance, because independent from the Apache version being used, we can now have the ModSecurity configuration always work with the same parameters and always get access to the current Apache web server. The first two options establish the link to the Apache binary, since we have to make sure that ModSecurity is working with the right API version. The _with-pcre_ option defines that we are using the system’s own _PCRE-Library_, or Regular Expression Library, and not the one provided by Apache. This gives us a certain level of flexibility for updates, because we are becoming independent from Apache in this area, which has proven to work in practice. It requires the first installed _libpcre3-dev_ package.
+We created the <i>/nginx</i> symlink in the tutorial on compiling NGINX. This again comes to our assistance, because independent from the NGINX version being used, we can now have the ModSecurity configuration always work with the same parameters and always get access to the current NGINX web server. The first two options establish the link to the NGINX binary, since we have to make sure that ModSecurity is working with the right API version. The _with-pcre_ option defines that we are using the system’s own _PCRE-Library_, or Regular Expression Library, and not the one provided by NGINX. This gives us a certain level of flexibility for updates, because we are becoming independent from NGINX in this area, which has proven to work in practice. It requires the first installed _libpcre3-dev_ package.
 
 ### Step 3: Compiling and installing standalone ModSecurity
 
@@ -94,15 +94,18 @@ This seems to be alright, let's unpack this archive and return to the NGINX sour
 ```bash
 $> tar -xvzf modsecurity-nginx-v1.0.0.tar.gz
 $> cd /usr/src/nginx/nginx-1.13.9
+$> export MODSECURITY_LIB="/usr/src/modsecurity/modsecurity-v3.0.0/src/.libs/"
+$> export MODSECURITY_INC="/usr/src/modsecurity/modsecurity-v3.0.0/headers/"
 $> ./configure --prefix=/opt/nginx-1.13.9 --with-http_ssl_module --with-threads --with-file-aio --with-compat --add-dynamic-module=/usr/src/modsecurity/modsecurity-nginx-v1.0.0
 ```
-This should be smooth. When it's done, then you can proceed and build the module. However, I also noticed, that the module could not be loaded by the previously compiled NGINX server. So we need to build that one again.
+Before we can re-configure the compilation of NGINX, we need to give it two paths pointing to the ModSecurity source code path. And then with the configure command the path to the connector. Afterwards, this should be smooth. When it's done, then you can proceed and build the module. However, I also noticed, that the module could not be loaded by the previously compiled NGINX server. So we need to build that one again.
 
 ```bash
 $> make
 ...
 $> sudo make install
 ...
+$> sudo chown -R `whoami` /opt/nginx-1.13.9
 $> make modules
 ...
 ```
@@ -261,7 +264,7 @@ UYkHrn8AAQEAAHb-AM0AAAAB "-" /20130507/20130507-1554/20130507-155454-UYkHrn8AAQE
 0 20343 md5:a395b35a53c836f14514b3fff7e45308
 ```
 
-We see some information about the request, the HTTP status code and shortly afterward the _unique ID_ of the request, which we also find in our access log. An absolute path follows a bit later. But it only appears to be absolute. Specifically, we have to add this part of the path to the value in _SecAuditLogStorageDir_. For us this means _/apache/logs/audit/20130507/20130507-1554/20130507-155454-UYkHrn8AAQEAAHb-AM0AAAAB_. We can then find the details about the request in this file.
+We see some information about the request, the HTTP status code and shortly afterward the _unique ID_ of the request, which we also find in our access log. An absolute path follows a bit later. But it only appears to be absolute. Specifically, we have to add this part of the path to the value in _SecAuditLogStorageDir_. For us this means _/nginx/logs/audit/20130507/20130507-1554/20130507-155454-UYkHrn8AAQEAAHb-AM0AAAAB_. We can then find the details about the request in this file.
 
 ```bash
 --5a70c866-A--
@@ -281,13 +284,13 @@ Content-Type: application/x-www-form-urlencoded
 The parts described divide the file into sections. What follows is part _--5a70c866-A--_ as part A, then _--5a70c866-B--_ as part B, etc. We will be having a look at this log in detail in a subsequent tutorial. This introduction should suffice for the moment. But what is not sufficient is our file system. Because, in order to write the _audit log_ at all, the directory must first be created and the appropriate permissions assigned:
 
 ```bash
-$> sudo mkdir /apache/logs/audit
-$> sudo chown www-data:www-data /apache/logs/audit
+$> sudo mkdir /nginx/logs/audit
+$> sudo chown www-data:www-data /nginx/logs/audit
 ```
 
-This brings us to the _SecDefaultAction_ directive. It denotes the basic setting of a security rule. Although we can define this value for each rule, it is normal to work with one default value which is then inherited by all of the rules. ModSecurity is aware of five phases. Phase 1 listed here starts once the request headers have arrived on the server. The other phases are the _request body phase (phase 2)_, _response header phase (phase 3)_, _response body phase (phase 4)_ and the _logging phase (phase 5)_. We then say that when a rule takes effect we would normally like the request to pass. We will be defining blocking measures separately. We would like to log; meaning that we would like to see a message about the triggered rule in the Apache server's _error log_ and ultimately assign each of these log entries a *tag*. The tag set, _Local Lab Service_, is only one example of the strings, even several of them, that can be set. In a larger company it can for example be useful for adding additional information about a service (contract number, customer contact details, references to documentation, etc.). This information is then included along with every log entry. This may first sound like a waste of resources, but one employee on an operational security team may be responsible for several hundred services and the URL alone is not enough at this time for unknown services. These service metadata, added by using tags, enable a quick and appropriate reaction to attacks.
+This brings us to the _SecDefaultAction_ directive. It denotes the basic setting of a security rule. Although we can define this value for each rule, it is normal to work with one default value which is then inherited by all of the rules. ModSecurity is aware of five phases. Phase 1 listed here starts once the request headers have arrived on the server. The other phases are the _request body phase (phase 2)_, _response header phase (phase 3)_, _response body phase (phase 4)_ and the _logging phase (phase 5)_. We then say that when a rule takes effect we would normally like the request to pass. We will be defining blocking measures separately. We would like to log; meaning that we would like to see a message about the triggered rule in the NGINX server's _error log_ and ultimately assign each of these log entries a *tag*. The tag set, _Local Lab Service_, is only one example of the strings, even several of them, that can be set. In a larger company it can for example be useful for adding additional information about a service (contract number, customer contact details, references to documentation, etc.). This information is then included along with every log entry. This may first sound like a waste of resources, but one employee on an operational security team may be responsible for several hundred services and the URL alone is not enough at this time for unknown services. These service metadata, added by using tags, enable a quick and appropriate reaction to attacks.
 
-This brings us to the ModSecurity rules. Although the module works with the limits defined above, the actual functionality lies mainly in the individual rules that can be expressed in their own rule language. But before we have a look at the individual rules, a comment section with definitions of the namespace of the rule ID numbers follows in the Apache configuration. Each ModSecurity rule has a number for identification. In order to keep the rules manageable, it is useful to cleanly divide up the namespace.
+This brings us to the ModSecurity rules. Although the module works with the limits defined above, the actual functionality lies mainly in the individual rules that can be expressed in their own rule language. But before we have a look at the individual rules, a comment section with definitions of the namespace of the rule ID numbers follows in the NGINX configuration. Each ModSecurity rule has a number for identification. In order to keep the rules manageable, it is useful to cleanly divide up the namespace.
 
 The OWASP ModSecurity Core Rule Set project provides a basic set of over 200 ModSecurity rules. We will be embedding these rules in the next tutorial. They have IDs beginning with the number 900,000 and range up to 999,999. For this reason, we shouldn't set up any rules in this range. The ModSecurity sample configuration provides a few rules in the range starting at 200,000. Our own rules are best organized in the big spaces in between. I suggest keeping in the range below 100,000.
 
@@ -305,7 +308,7 @@ The ModSecurity distribution sample configuration has another rule with ID 20000
 
 With 200005 comes another rule which intercepts internal processing errors. Unlike the preceding internal variables, here we are looking for a group of variables dynamically provided along with the current request. A data sheet called _TX_ (transaction) is opened for each request. In ModSecurity jargon we refer to a _collection_ of variables and values. While processing a request ModSecurity now in some circumstances sets additional values in the _TX collection_, in addition to the variables already inspected. The names of these variables begin with the prefix *MSC_*. We now access in parallel all variables of this pattern in the collection. This is done via the *TX:/^MSC_/* construct. Thus, the transaction collection and then variable names matching the regular expression *^MSC_*: A word beginning with *MSC_*. If one of these found variables is not equal to zero, we then block the request using HTTP status 500 (_internal server error_) and write the variable names in the log file.
 
-We have now looked at a few rules and have become familiar with the principle functioning of the ModSecurity _WAF_. The rule language is demanding, but very systematic. The structure is unavoidably oriented to the structure of Apache directives. Because before ModSecurity is able to process the directives, they are read by Apache's configuration parser. This is also accompanied by complexity in the way they are expressed. *ModSecurity* is currently being developed in a direction making the module independent from Apache. We will hopefully be benefitting from a configuration that is easier to read.
+We have now looked at a few rules and have become familiar with the principle functioning of the ModSecurity _WAF_. The rule language is demanding, but very systematic. The structure is unavoidably oriented to the structure of NGINX directives. Because before ModSecurity is able to process the directives, they are read by NGINX's configuration parser. This is also accompanied by complexity in the way they are expressed. *ModSecurity* is currently being developed in a direction making the module independent from NGINX. We will hopefully be benefitting from a configuration that is easier to read.
 
 ### Step 6: Writing simple blacklist rules
 
@@ -348,12 +351,12 @@ Let’s also have a look at what we can find about this in the _error log_:
 ```bash
 [2017-02-25 06:46:29.793701] [-:error] 127.0.0.1:50430 WLEaNX8AAQEAAFZKT5cAAAAA …
 [client 127.0.0.1] ModSecurity: Access denied with code 403 (phase 1). …
-Pattern match "/phpmyadmin" at REQUEST_FILENAME. [file "/apache/conf/httpd.conf_pod_2017-02-25_06:45"] …
+Pattern match "/phpmyadmin" at REQUEST_FILENAME. [file "/NGINX/conf/httpd.conf_pod_2017-02-25_06:45"] …
 [line "140"] [id "10000"] [msg "Blocking access to /phpmyadmin."] [tag "Blacklist Rules"]  …
 [hostname "localhost"] [uri "/phpmyadmin"] [unique_id "WLEaNX8AAQEAAFZKT5cAAAAA"]
 ```
 
-Here, _ModSecurity_ describes the rule that was applied and the action taken: First the timestamp. Then the severity of the log entry assigned by Apache. The _error_ stage is assigned to all _ModSecurity_ messages. Then comes the client IP address. Between that there are some empty fields, indicated only by "-". In Apache 2.4 they remain empty, because the log format has changed and *ModSecurity* is not yet able to understand it. Afterwards comes the actual message which opens with action: _Access denied with code 403_, specifically already in phase 1 while receiving the request headers. We then see a message about the rule violation: The string _"/phpMyAdmin"_ was found in the *REQUEST_FILENAME*. This is exactly what we defined. The subsequent bits of information are embedded in blocks of square brackets. In each block first comes the name and then the information separated by a space. Our rule puts us on line 140 in the file */apache/conf/httpd.conf_modsec_minimal*. As we know, the rule has ID 10000. In _msg_ we see the summary of the rule defined in the rule, where the variable *MATCHED_VAR* has been replaced by the path part of the request. Afterwards comes the tag that we set in _SetDefaultAction_; finally, the tag set in addition for this rule. At the end come the hostname, URI and the unique ID of the request.
+Here, _ModSecurity_ describes the rule that was applied and the action taken: First the timestamp. Then the severity of the log entry assigned by NGINX. The _error_ stage is assigned to all _ModSecurity_ messages. Then comes the client IP address. Between that there are some empty fields, indicated only by "-". In NGINX 2.4 they remain empty, because the log format has changed and *ModSecurity* is not yet able to understand it. Afterwards comes the actual message which opens with action: _Access denied with code 403_, specifically already in phase 1 while receiving the request headers. We then see a message about the rule violation: The string _"/phpMyAdmin"_ was found in the *REQUEST_FILENAME*. This is exactly what we defined. The subsequent bits of information are embedded in blocks of square brackets. In each block first comes the name and then the information separated by a space. Our rule puts us on line 140 in the file */nginx/conf/httpd.conf_modsec_minimal*. As we know, the rule has ID 10000. In _msg_ we see the summary of the rule defined in the rule, where the variable *MATCHED_VAR* has been replaced by the path part of the request. Afterwards comes the tag that we set in _SetDefaultAction_; finally, the tag set in addition for this rule. At the end come the hostname, URI and the unique ID of the request.
 
 We will also find more details about this information in the _audit log_ discussed above. However, for normal use the _error log_ is often enough.
 
@@ -443,7 +446,7 @@ SecMarker END_WHITELIST_login
 
 Since this is a multi-line set of rules, we delimit the group of rules using two markers: *BEGIN_WHITELIST_login* and *END_WHITELIST_login*. We only need the first marker for readability, but the second one is a jump label. The first rule (ID 11000) enforces our policy to deny requests containing two dots in succession in the URI. Two dots in succession might serve as a way to evade our subsequent path criteria. E.g., constructing an URI which looks like accessing some other folder, but then uses `..` to escape from that folder and access `/login` nevertheless. This rule makes sure none of these games can be played with our server.
 
-In the two following rules (ID 11001 and 11002) we check whether our set of rules is affected at all. If the path written in lowercase and normalized does not begin with _/login_, we skip to the end marker - with no entry in the log file. It would be possible to place the entire block of rules within an Apache *Location* block, however, I prefer the rule style presented here. The whitelist we are constructing is a partial whitelist as it does not cover the whole server. Instead, it focuses on the login with the idea, that the login page will be accessed by anonymous users. Once they have performed the login, they have at least proved their credentials and a certain trust has been established. The login is thus a likely target for anonymous attackers and we want to secure it really well. It is also likely that any application on the server is more complex than the login and writing a positive ruleset for an advanced application would be too complicated for this tutorial. But the limited scope of the login makes it perfectly achievable and it adds a lot of security. The example serves as a template to use for other partial whitelists.
+In the two following rules (ID 11001 and 11002) we check whether our set of rules is affected at all. If the path written in lowercase and normalized does not begin with _/login_, we skip to the end marker - with no entry in the log file. It would be possible to place the entire block of rules within an NGINX *Location* block, however, I prefer the rule style presented here. The whitelist we are constructing is a partial whitelist as it does not cover the whole server. Instead, it focuses on the login with the idea, that the login page will be accessed by anonymous users. Once they have performed the login, they have at least proved their credentials and a certain trust has been established. The login is thus a likely target for anonymous attackers and we want to secure it really well. It is also likely that any application on the server is more complex than the login and writing a positive ruleset for an advanced application would be too complicated for this tutorial. But the limited scope of the login makes it perfectly achievable and it adds a lot of security. The example serves as a template to use for other partial whitelists.
 
 Having established the fact that we are dealing with a login request, we can now write down our rules checking these request. An HTTP request has several characteristics that are of concern to us: The method, the path, the query string parameter as well as any post parameters (this concerns the submission of a login form). We will leave out the request headers including cookies in this example, but they could also become a vulnerability depending on the application and should also be queried then.
 
@@ -494,33 +497,33 @@ A glance at the server’s error log proves that the are applied exactly as we d
 ```bash
 [2017-12-17 16:04:06.363090] [-:error] 127.0.0.1:53482 WjaHZrq3BsfzODHx0EBwoQAAAAM [client 127.0.0.1] …
 ModSecurity: Access denied with code 403 (phase 2). Match of "rx ^(username|password|sectoken)$" …
-against "ARGS_NAMES:debug" required. [file "/apache/conf/httpd.conf_pod_2017-12-17_12:10"] [line "227"] …
+against "ARGS_NAMES:debug" required. [file "/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] [line "227"] …
 [id "11300"] [msg "Unknown parameter: ARGS_NAMES:debug"] [tag "Login Whitelist"] [hostname "localhost"] …
 [uri "/login/displayLogin.do"] [unique_id "WjaHZrq3BsfzODHx0EBwoQAAAAM"]
 [2017-12-17 16:04:13.818721] [-:error] 127.0.0.1:53694 WjaHbbq3BsfzODHx0EBwogAAAAU [client 127.0.0.1] …
 ModSecurity: Access denied with code 404 (phase 1). Unconditional match in SecAction. [file …
-"/apache/conf/httpd.conf_pod_2017-12-17_12:10"] [line "220"] [id "11299"] …
+"/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] [line "220"] [id "11299"] …
 [msg "Unknown URI /login/admin.html"] [tag "Login Whitelist"] [hostname "localhost"] …
 [uri "/login/admin.html"] [unique_id "WjaHbbq3BsfzODHx0EBwogAAAAU"]
 [2017-12-17 16:04:27.427211] [-:error] 127.0.0.1:54314 WjaHe7q3BsfzODHx0EBwpAAAAAk [client 127.0.0.1] …
 ModSecurity: Access denied with code 403 (phase 2). Match of "rx ^(username|password|sectoken)$" …
-against "ARGS_NAMES:backdoor" required. [file "/apache/conf/httpd.conf_pod_2017-12-17_12:10"] …
+against "ARGS_NAMES:backdoor" required. [file "/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] …
 [line "227"] [id "11300"] [msg "Unknown parameter: ARGS_NAMES:backdoor"] [tag "Login Whitelist"] …
 [hostname "localhost"] [uri "/login/login.do"] [unique_id "WjaHe7q3BsfzODHx0EBwpAAAAAk"]
 [2017-12-17 16:04:34.347509] [-:error] 127.0.0.1:54616 WjaHgrq3BsfzODHx0EBwpQAAAAo [client 127.0.0.1] …
 ModSecurity: Access denied with code 403 (phase 2). Match of "rx ^[a-zA-Z0-9.@-]{1,32}$" against …
-"ARGS:username" required. [file "/apache/conf/httpd.conf_pod_2017-12-17_12:10"] [line "243"] [id …
+"ARGS:username" required. [file "/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] [line "243"] [id …
 "11500"] [msg "Invalid parameter format: ARGS:username (john56789012345678901234567890123)"] [tag …
 "Login Whitelist"] [hostname "localhost"] [uri "/login/login.do"] …
 [unique_id "WjaHgrq3BsfzODHx0EBwpQAAAAo"]
 [2017-12-17 16:04:42.069838] [-:error] 127.0.0.1:54850 WjaHirq3BsfzODHx0EBwpgAAAAw [client 127.0.0.1] …
 ModSecurity: Access denied with code 403 (phase 2). Match of "rx ^[a-zA-Z0-9.@-]{1,32}$" against …
-"ARGS:username" required. [file "/apache/conf/httpd.conf_pod_2017-12-17_12:10"] [line "243"] …
+"ARGS:username" required. [file "/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] [line "243"] …
 [id "11500"] [msg "Invalid parameter format: ARGS:username (john')"] [tag "Login Whitelist"] …
 [hostname "localhost"] [uri "/login/login.do"] [unique_id "WjaHirq3BsfzODHx0EBwpgAAAAw"]
 [2017-12-17 16:04:55.542582] [-:error] 127.0.0.1:55288 WjaHl7q3BsfzODHx0EBwpwAAAAs [client 127.0.0.1] …
 ModSecurity: Access denied with code 403 (phase 2). Operator GT matched 1 at ARGS. [file …
-"/apache/conf/httpd.conf_pod_2017-12-17_12:10"] [line "232"] [id "11400"] [msg "ARGS occurring …
+"/nginx/conf/httpd.conf_pod_2017-12-17_12:10"] [line "232"] [id "11400"] [msg "ARGS occurring …
 more than once"] [tag "Login Whitelist"] [hostname "localhost"] [uri "/login/login.do"] …
 [unique_id "WjaHl7q3BsfzODHx0EBwpwAAAAs"]
 ```
@@ -540,11 +543,11 @@ We then find the traffic for the client 127.0.0.1 specified in the rule in the a
 ```bash
 $> curl localhost
 ...
-$> sudo tail -1 /apache/logs/modsec_audit.log
+$> sudo tail -1 /nginx/logs/modsec_audit.log
 localhost 127.0.0.1 - - [17/Oct/2015:06:17:08 +0200] "GET /index.html HTTP/1.1" 404 214 "-" "-" …
 UcAmDH8AAQEAAGUjAMoAAAAA "-" /20151017/20151017-0617/20151017-061708-UcAmDH8AAQEAAGUjAMoAAAAA …
 0 15146 md5:e2537a9239cbbe185116f744bba0ad97 
-$> sudo cat /apache/logs/audit/20151017/20151017-0617/20151017-061708-UcAmDH8AAQEAAGUjAMoAAAAA
+$> sudo cat /nginx/logs/audit/20151017/20151017-0617/20151017-061708-UcAmDH8AAQEAAGUjAMoAAAAA
 --c54d6c5e-A--
 [17/Oct/2015:06:17:08 +0200] UcAmDH8AAQEAAGUjAMoAAAAA 127.0.0.1 52386 127.0.0.1 80
 --c54d6c5e-B--
@@ -556,7 +559,7 @@ Accept: */*
 --c54d6c5e-F--
 HTTP/1.1 200 OK
 Date: Tue, 27 Oct 2015 21:39:03 GMT
-Server: Apache
+Server: NGINX
 Last-Modified: Tue, 06 Oct 2015 11:55:08 GMT
 ETag: "2d-5216e4d2e6c03"
 Accept-Ranges: bytes
@@ -574,7 +577,7 @@ We have reached the end of this tutorial. *ModSecurity* is an important componen
 
 ### References
 
-* Apache [https://httpd.apache.org](http://httpd.apache.org)
+* NGINX [https://www.nginx.org](http://www.nginx.org)
 * ModSecurity [https://www.modsecurity.org](http://www.modsecurity.org)
 * ModSecurity Reference Manual [https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual](https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual)
 

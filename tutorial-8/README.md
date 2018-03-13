@@ -535,7 +535,6 @@ But before we get there, we need to add few more rule exclusions.
 
 After the first batch of rule exclusions, we would observe the service and end up with the following new logs:
 
-* [tutorial-8-nginx-example-access-round-2.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-2.log)
 * [tutorial-8-nginx-example-error-round-2.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-2.log)
 
 We start again with a look at the score distribution:
@@ -771,7 +770,6 @@ And done. This time, we cleaned out all the scores above 50. Time to reduce the 
 
 Here are the new exercise files. It's still the same traffic, but with fewer alerts again thanks to the rule exclusions.
 
-* [tutorial-8-nginx-example-access-round-3.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-3.log)
 * [tutorial-8-nginx-example-error-round-3.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-3.log)
 
 
@@ -894,7 +892,6 @@ Time to reduce the limit once more (down to 10 this time) and see what happens.
 
 We have a new pair of logs: 
 
-* [tutorial-8-nginx-example-access-round-4.log](https://www.netnea.com/files/tutorial-8-nginx-example-access-round-4.log)
 * [tutorial-8-nginx-example-error-round-4.log](https://www.netnea.com/files/tutorial-8-nginx-example-error-round-4.log)
 
 These are the statistics:
